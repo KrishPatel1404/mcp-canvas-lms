@@ -1,11 +1,11 @@
 {
   "name": "canvas-mcp-server",
-  "version": "2.0.0",
+  "version": "2.1.2",
   "description": "A comprehensive Model Context Protocol (MCP) server for Canvas LMS with full student functionality",
   "type": "module",
   "main": "build/index.js",
   "bin": {
-    "canvas-mcp-server": "./build/index.js"
+    "canvas-mcp-server": "build/index.js"
   },
   "mcp": {
     "server": {
@@ -40,12 +40,12 @@
     "health-check": "./scripts/health-check.sh",
     "deploy": "./scripts/deploy.sh",
     "inspector": "npx @modelcontextprotocol/inspector build/index.js",
-    "publish": "npm run build && npm publish --access public",
+    "publish": "npm run build",
     "precommit": "npm run lint && npm run type-check && npm run test:unit"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/DMontgomery40/mcp-canvas-lms.git"
+    "url": "git+https://github.com/DMontgomery40/mcp-canvas-lms.git"
   },
   "keywords": [
     "canvas",
@@ -60,7 +60,7 @@
     "assignments",
     "courses"
   ],
-  "author": "David Montgomery <david@example.com>",
+  "author": "David Montgomery <dmontg@gmail.com>",
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/DMontgomery40/mcp-canvas-lms/issues"
