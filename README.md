@@ -1,20 +1,19 @@
-# Canvas MCP Server v2.0
+# Canvas MCP Server v2.2.0
 
-> A comprehensive Model Context Protocol (MCP) server for Canvas LMS with complete student and instructor functionality
+> A comprehensive Model Context Protocol (MCP) server for Canvas LMS with complete student, instructor, and account administration functionality
 
+## 🚀 What's New in v2.2.0
 
-## What's New in v2.0
+- **🔧 FIXED**: Course creation "page not found" error (missing `account_id` parameter)
+- **👨‍💼 Account Management**: Complete account-level administration tools
+- **📊 Reports & Analytics**: Generate and access Canvas account reports  
+- **👥 User Management**: Create and manage users at the account level
+- **🏢 Multi-Account Support**: Handle account hierarchies and sub-accounts
+- **✅ API Compliance**: All endpoints now follow proper Canvas API patterns
 
-- **Complete Student Experience**: 40+ tools covering all student workflows
-- **Remote Ready**: Docker, Kubernetes, and cloud deployment support
-- **Fully Tested**: Comprehensive test suite with 90%+ coverage
-- **Production Grade**: Robust error handling, retry logic, health monitoring
-- **Modern Stack**: TypeScript, async/await, automatic pagination
-- **Real-time**: Dashboard updates, upcoming assignments, calendar integration
+## 🎯 Key Features
 
-## Key Features
-
-### For Students
+### 🎓 For Students
 - **Course Management**: Access all courses, syllabi, and course materials
 - **Assignment Workflow**: View, submit (text/URL/files), and track assignments
 - **Communication**: Participate in discussions, read announcements, send messages
@@ -22,17 +21,25 @@
 - **Quizzes**: Take quizzes, view results and feedback
 - **File Access**: Browse and download course files and resources
 
-### For Instructors
-- **Course Creation**: Create and manage course structure
+### 👨‍🏫 For Instructors
+- **Course Creation**: Create and manage course structure *(now with proper account support)*
 - **Grading**: Grade submissions, provide feedback, manage rubrics
 - **User Management**: Enroll students, manage permissions
 - **Content Management**: Create assignments, quizzes, discussions
 
-### Technical Excellence
+### 👨‍💼 For Account Administrators (NEW!)
+- **Account Management**: Manage institutional Canvas accounts
+- **User Administration**: Create and manage users across accounts
+- **Course Oversight**: List and manage all courses within accounts
+- **Reporting**: Generate enrollment, grade, and activity reports
+- **Sub-Account Management**: Handle account hierarchies and structures
+
+### 🛠️ Technical Excellence
 - **Robust API**: Automatic retries, pagination, comprehensive error handling
 - **Cloud Ready**: Docker containers, Kubernetes manifests, health checks
 - **Well Tested**: Unit tests, integration tests, mocking, coverage reports
 - **Type Safe**: Full TypeScript implementation with strict types
+- **50+ Tools**: Comprehensive coverage of Canvas LMS functionality
 
 ## Quick Start
 
@@ -79,7 +86,33 @@ docker run -d \
   ghcr.io/dmontgomery40/mcp-canvas-lms:latest
 ```
 
-## Student Workflow Examples
+## 💼 Account Admin Workflow Examples
+
+### Create a New Course (FIXED!)
+```
+"Create a new course called 'Advanced Biology' in account 123"
+```
+**Now properly creates courses with required account_id parameter**
+
+### Manage Users
+```
+"Create a new student user John Doe with email john.doe@school.edu in our main account"
+```
+**Creates user accounts with proper pseudonym and enrollment setup**
+
+### Generate Reports
+```
+"Generate an enrollment report for account 456 for the current term"
+```
+**Initiates Canvas reporting system for institutional analytics**
+
+### List Account Courses
+```
+"Show me all published Computer Science courses in our Engineering account"
+```
+**Advanced filtering and searching across account course catalogs**
+
+## 🎓 Student Workflow Examples
 
 ### Check Today's Assignments
 ```
@@ -118,6 +151,8 @@ docker run -d \
 3. **Click "+ New Access Token"**
 4. **Enter description**: "Claude MCP Integration"
 5. **Copy the generated token** Save securely!
+
+⚠️ **Account Admin Note**: For account-level operations, ensure your API token has administrative privileges.
 
 ## Production Deployment
 
@@ -168,10 +203,10 @@ npm run lint
 npm run type-check
 ```
 
-## 📚 Available Tools
+## 📚 Available Tools (50+ Tools)
 
 <details>
-<summary><strong>Core Student Tools (Click to expand)</strong></summary>
+<summary><strong>🎓 Core Student Tools (Click to expand)</strong></summary>
 
 - `canvas_health_check` - Check API connectivity
 - `canvas_list_courses` - List all your courses
@@ -181,35 +216,90 @@ npm run type-check
 - `canvas_submit_assignment` - Submit assignment work
 - `canvas_get_submission` - Check submission status
 - `canvas_list_modules` - List course modules
+- `canvas_get_module` - Get module details
+- `canvas_list_module_items` - List items in a module
 - `canvas_mark_module_item_complete` - Mark items complete
-- `canvas_list_discussions` - List discussion topics
+- `canvas_list_discussion_topics` - List discussion topics
+- `canvas_get_discussion_topic` - Get discussion details
 - `canvas_post_to_discussion` - Post to discussions
 - `canvas_list_announcements` - List course announcements
 - `canvas_get_user_grades` - Get your grades
+- `canvas_get_course_grades` - Get course-specific grades
 - `canvas_get_dashboard` - Get dashboard info
+- `canvas_get_dashboard_cards` - Get course cards
 - `canvas_get_upcoming_assignments` - Get due dates
 - `canvas_list_calendar_events` - List calendar events
 - `canvas_list_files` - List course files
+- `canvas_get_file` - Get file details
+- `canvas_list_folders` - List course folders
 - `canvas_list_pages` - List course pages
 - `canvas_get_page` - Get page content
 - `canvas_list_conversations` - List messages
+- `canvas_get_conversation` - Get conversation details
 - `canvas_create_conversation` - Send messages
+- `canvas_list_notifications` - List notifications
+- `canvas_get_syllabus` - Get course syllabus
+- `canvas_get_user_profile` - Get user profile
+- `canvas_update_user_profile` - Update profile
 
 </details>
 
 <details>
 <summary><strong>👨‍🏫 Instructor Tools (Click to expand)</strong></summary>
 
-- `canvas_create_course` - Create new courses
+- `canvas_create_course` - Create new courses *(FIXED: now requires account_id)*
 - `canvas_update_course` - Update course settings
 - `canvas_create_assignment` - Create assignments
 - `canvas_update_assignment` - Update assignments
+- `canvas_list_assignment_groups` - List assignment groups
 - `canvas_submit_grade` - Grade submissions
 - `canvas_enroll_user` - Enroll students
+- `canvas_list_quizzes` - List course quizzes
+- `canvas_get_quiz` - Get quiz details
 - `canvas_create_quiz` - Create quizzes
-- `canvas_update_quiz` - Update quizzes
+- `canvas_start_quiz_attempt` - Start quiz attempts
+- `canvas_list_rubrics` - List course rubrics
+- `canvas_get_rubric` - Get rubric details
 
 </details>
+
+<details>
+<summary><strong>👨‍💼 Account Management Tools (NEW!)</strong></summary>
+
+- `canvas_get_account` - Get account details
+- `canvas_list_account_courses` - List courses in an account
+- `canvas_list_account_users` - List users in an account  
+- `canvas_create_user` - Create new users in accounts
+- `canvas_list_sub_accounts` - List sub-accounts
+- `canvas_get_account_reports` - List available reports
+- `canvas_create_account_report` - Generate account reports
+
+</details>
+
+## 🔧 Breaking Changes in v2.2.0
+
+### Course Creation Fix
+**BEFORE (Broken):**
+```javascript
+{
+  "tool": "canvas_create_course",
+  "arguments": {
+    "name": "My Course"  // ❌ Missing account_id - caused "page not found"
+  }
+}
+```
+
+**AFTER (Fixed):**
+```javascript
+{
+  "tool": "canvas_create_course", 
+  "arguments": {
+    "account_id": 123,              // ✅ Required account_id
+    "name": "My Course",
+    "course_code": "CS-101"
+  }
+}
+```
 
 ## 🌟 Example Claude Conversations
 
@@ -221,17 +311,26 @@ npm run type-check
 
 ---
 
-**Student**: *"What's my current grade in Biology and what assignments am I missing?"*
+**Instructor**: *"Create a new Advanced Physics course in the Science department and enroll my teaching assistant"*
 
-**Claude**: *I'll check your Biology grades and identify any missing assignments...*
+**Claude**: *I'll help you create the Advanced Physics course in your Science department account and then enroll your TA...*
 
-[Claude uses `canvas_get_course_grades` and `canvas_list_assignments` with submission status]
+[Claude uses `canvas_create_course` with proper account_id, then `canvas_enroll_user`]
+
+---
+
+**Administrator**: *"Generate an enrollment report for all Computer Science courses this semester"*
+
+**Claude**: *I'll generate a comprehensive enrollment report for your CS courses...*
+
+[Claude uses `canvas_list_account_courses` with filters, then `canvas_create_account_report`]
 
 ## 🔍 Troubleshooting
 
 **Common Issues:**
 - ❌ **401 Unauthorized**: Check your API token and permissions
 - ❌ **404 Not Found**: Verify course/assignment IDs and access rights  
+- ❌ **"Page not found" on course creation**: Update to v2.2.0 for account_id fix
 - ❌ **Timeout**: Increase `CANVAS_TIMEOUT` or check network connectivity
 
 **Debug Mode:**
@@ -260,8 +359,8 @@ npm run dev:watch
 
 ## 📈 Roadmap
 
-- **v2.1**: Real-time notifications, bulk operations, advanced search
-- **v2.2**: Mobile support, offline capability, analytics dashboard  
+- **v2.3**: Enhanced reporting, bulk operations, advanced search
+- **v2.4**: Mobile support, offline capability, analytics dashboard  
 - **v3.0**: Multi-tenant, GraphQL API, AI-powered insights
 
 ## 🙋 Support & Community
@@ -277,8 +376,8 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ---
 
 <div align="center">
-  <strong>Canvas MCP Server v2.0</strong><br>
-  <em>Empowering students and educators with seamless Canvas integration</em><br><br>
+  <strong>Canvas MCP Server v2.2.0</strong><br>
+  <em>Empowering students, educators, and administrators with seamless Canvas integration</em><br><br>
   
   ⭐ **Star this repo if it helps you!** ⭐
 </div>

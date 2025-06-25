@@ -545,6 +545,7 @@ export interface CanvasPlannerItem {
  * Tool input types with strict validation
  */
 export interface CreateCourseArgs {
+  account_id: number;
   name: string;
   course_code?: string;
   start_at?: string;
@@ -567,6 +568,7 @@ export interface CreateCourseArgs {
   hide_final_grades?: boolean;
   apply_assignment_group_weights?: boolean;
   time_zone?: string;
+  syllabus_body?: string;
 }
 
 export interface UpdateCourseArgs {
@@ -706,4 +708,101 @@ export interface CanvasErrorResponse {
     error_code?: string;
   }>;
   error_report_id?: string;
+}
+
+// Account-level interfaces
+export interface CanvasAccount {
+  id: number;
+  name: string;
+  uuid: string;
+  parent_account_id: number | null;
+  root_account_id: number | null;
+  default_storage_quota_mb: number;
+  default_user_storage_quota_mb: number;
+  default_group_storage_quota_mb: number;
+  default_time_zone: string;
+  sis_account_id: string | null;
+  integration_id: string | null;
+  sis_import_id: number | null;
+  lti_guid: string;
+  workflow_state: string;
+}
+
+export interface CreateUserArgs {
+  account_id: number;
+  user: {
+    name: string;
+    short_name?: string;
+    sortable_name?: string;
+    time_zone?: string;
+    locale?: string;
+    birthdate?: string;
+    terms_of_use?: boolean;
+    skip_registration?: boolean;
+  };
+  pseudonym: {
+    unique_id: string;
+    password?: string;
+    sis_user_id?: string;
+    integration_id?: string;
+    send_confirmation?: boolean;
+    force_validations?: boolean;
+    authentication_provider_id?: string;
+  };
+  communication_channel?: {
+    type: 'email' | 'sms';
+    address: string;
+    skip_confirmation?: boolean;
+  };
+  force_validations?: boolean;
+  enable_sis_reactivation?: boolean;
+}
+
+export interface CanvasAccountReport {
+  id: number;
+  report: string;
+  file_url?: string;
+  attachment?: CanvasFile;
+  status: 'created' | 'running' | 'complete' | 'error';
+  created_at: string;
+  started_at?: string;
+  ended_at?: string;
+  parameters: Record<string, any>;
+  progress: number;
+  current_line?: number;
+}
+
+export interface CreateReportArgs {
+  account_id: number;
+  report: string;
+  parameters?: Record<string, any>;
+}
+
+export interface ListAccountCoursesArgs {
+  account_id: number;
+  with_enrollments?: boolean;
+  enrollment_type?: string[];
+  published?: boolean;
+  completed?: boolean;
+  blueprint?: boolean;
+  blueprint_associated?: boolean;
+  by_teachers?: number[];
+  by_subaccounts?: number[];
+  hide_enrollmentless_courses?: boolean;
+  state?: ('created' | 'claimed' | 'available' | 'completed' | 'deleted' | 'all')[];
+  enrollment_term_id?: number;
+  search_term?: string;
+  include?: string[];
+  sort?: 'course_name' | 'sis_course_id' | 'teacher' | 'account_name';
+  order?: 'asc' | 'desc';
+  search_by?: 'course' | 'teacher';
+}
+
+export interface ListAccountUsersArgs {
+  account_id: number;
+  search_term?: string;
+  enrollment_type?: string;
+  sort?: 'username' | 'email' | 'sis_id' | 'last_login';
+  order?: 'asc' | 'desc';
+  include?: string[];
 }

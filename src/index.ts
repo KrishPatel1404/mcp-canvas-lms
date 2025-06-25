@@ -24,7 +24,11 @@ import {
   CanvasAssignmentSubmission,
   SubmitAssignmentArgs,
   FileUploadArgs,
-  MCPServerConfig
+  MCPServerConfig,
+  CreateUserArgs,
+  ListAccountCoursesArgs,
+  ListAccountUsersArgs,
+  CreateReportArgs
 } from "./types.js";
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -72,6 +76,7 @@ const TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {
+        account_id: { type: "number", description: "ID of the account to create the course in" },
         name: { type: "string", description: "Name of the course" },
         course_code: { type: "string", description: "Course code (e.g., CS101)" },
         start_at: { type: "string", description: "Course start date (ISO format)" },
@@ -80,7 +85,7 @@ const TOOLS: Tool[] = [
         is_public: { type: "boolean" },
         syllabus_body: { type: "string", description: "Course syllabus content" }
       },
-      required: ["name"]
+      required: ["account_id", "name"]
     }
   },
   {
@@ -673,6 +678,116 @@ const TOOLS: Tool[] = [
       },
       required: ["course_id"]
     }
+  },
+
+  // Account Management
+  {
+    name: "canvas_get_account",
+    description: "Get account details",
+    inputSchema: {
+      type: "object",
+      properties: {
+        account_id: { type: "number", description: "ID of the account" }
+      },
+      required: ["account_id"]
+    }
+  },
+  {
+    name: "canvas_list_account_courses",
+    description: "List courses for an account",
+    inputSchema: {
+      type: "object",
+      properties: {
+        account_id: { type: "number", description: "ID of the account" },
+        with_enrollments: { type: "boolean", description: "Include enrollment data" },
+        published: { type: "boolean", description: "Only include published courses" },
+        completed: { type: "boolean", description: "Include completed courses" },
+        search_term: { type: "string", description: "Search term to filter courses" },
+        sort: { type: "string", enum: ["course_name", "sis_course_id", "teacher", "account_name"], description: "Sort order" },
+        order: { type: "string", enum: ["asc", "desc"], description: "Sort direction" }
+      },
+      required: ["account_id"]
+    }
+  },
+  {
+    name: "canvas_list_account_users",
+    description: "List users for an account",
+    inputSchema: {
+      type: "object",
+      properties: {
+        account_id: { type: "number", description: "ID of the account" },
+        search_term: { type: "string", description: "Search term to filter users" },
+        sort: { type: "string", enum: ["username", "email", "sis_id", "last_login"], description: "Sort order" },
+        order: { type: "string", enum: ["asc", "desc"], description: "Sort direction" }
+      },
+      required: ["account_id"]
+    }
+  },
+  {
+    name: "canvas_create_user",
+    description: "Create a new user in an account",
+    inputSchema: {
+      type: "object",
+      properties: {
+        account_id: { type: "number", description: "ID of the account" },
+        user: {
+          type: "object",
+          properties: {
+            name: { type: "string", description: "Full name of the user" },
+            short_name: { type: "string", description: "Short name of the user" },
+            sortable_name: { type: "string", description: "Sortable name (Last, First)" },
+            time_zone: { type: "string", description: "User's time zone" }
+          },
+          required: ["name"]
+        },
+        pseudonym: {
+          type: "object",
+          properties: {
+            unique_id: { type: "string", description: "Unique login ID (email or username)" },
+            password: { type: "string", description: "User's password" },
+            sis_user_id: { type: "string", description: "SIS ID for the user" },
+            send_confirmation: { type: "boolean", description: "Send confirmation email" }
+          },
+          required: ["unique_id"]
+        }
+      },
+      required: ["account_id", "user", "pseudonym"]
+    }
+  },
+  {
+    name: "canvas_list_sub_accounts",
+    description: "List sub-accounts for an account",
+    inputSchema: {
+      type: "object",
+      properties: {
+        account_id: { type: "number", description: "ID of the parent account" }
+      },
+      required: ["account_id"]
+    }
+  },
+  {
+    name: "canvas_get_account_reports",
+    description: "List available reports for an account",
+    inputSchema: {
+      type: "object",
+      properties: {
+        account_id: { type: "number", description: "ID of the account" }
+      },
+      required: ["account_id"]
+    }
+  },
+  {
+    name: "canvas_create_account_report",
+    description: "Generate a report for an account",
+    inputSchema: {
+      type: "object",
+      properties: {
+        account_id: { type: "number", description: "ID of the account" },
+        report: { type: "string", description: "Type of report to generate" },
+        parameters: { type: "object", description: "Report parameters" }
+      },
+      required: ["account_id", "report"]
+    }
   }
 ];
 
@@ -966,8 +1081,8 @@ class CanvasMCPServer {
           
           case "canvas_create_course": {
             const courseArgs = args as unknown as CreateCourseArgs;
-            if (!courseArgs.name) {
-              throw new Error("Missing required field: name");
+            if (!courseArgs.account_id || !courseArgs.name) {
+              throw new Error("Missing required fields: account_id and name");
             }
             const course = await this.client.createCourse(courseArgs);
             return {
@@ -1225,6 +1340,85 @@ class CanvasMCPServer {
           // Continue with all other tools...
           // [I'll include the rest in the same pattern]
           
+          // Account Management
+          case "canvas_get_account": {
+            const { account_id } = args as { account_id: number };
+            if (!account_id) throw new Error("Missing required field: account_id");
+            
+            const account = await this.client.getAccount(account_id);
+            return {
+              content: [{ type: "text", text: JSON.stringify(account, null, 2) }]
+            };
+          }
+
+          case "canvas_list_account_courses": {
+            const accountCoursesArgs = args as unknown as ListAccountCoursesArgs;
+            if (!accountCoursesArgs.account_id) {
+              throw new Error("Missing required field: account_id");
+            }
+            
+            const courses = await this.client.listAccountCourses(accountCoursesArgs);
+            return {
+              content: [{ type: "text", text: JSON.stringify(courses, null, 2) }]
+            };
+          }
+
+          case "canvas_list_account_users": {
+            const accountUsersArgs = args as unknown as ListAccountUsersArgs;
+            if (!accountUsersArgs.account_id) {
+              throw new Error("Missing required field: account_id");
+            }
+            
+            const users = await this.client.listAccountUsers(accountUsersArgs);
+            return {
+              content: [{ type: "text", text: JSON.stringify(users, null, 2) }]
+            };
+          }
+
+          case "canvas_create_user": {
+            const createUserArgs = args as unknown as CreateUserArgs;
+            if (!createUserArgs.account_id || !createUserArgs.user || !createUserArgs.pseudonym) {
+              throw new Error("Missing required fields: account_id, user, and pseudonym");
+            }
+            
+            const user = await this.client.createUser(createUserArgs);
+            return {
+              content: [{ type: "text", text: JSON.stringify(user, null, 2) }]
+            };
+          }
+
+          case "canvas_list_sub_accounts": {
+            const { account_id } = args as { account_id: number };
+            if (!account_id) throw new Error("Missing required field: account_id");
+            
+            const subAccounts = await this.client.listSubAccounts(account_id);
+            return {
+              content: [{ type: "text", text: JSON.stringify(subAccounts, null, 2) }]
+            };
+          }
+
+          case "canvas_get_account_reports": {
+            const { account_id } = args as { account_id: number };
+            if (!account_id) throw new Error("Missing required field: account_id");
+            
+            const reports = await this.client.getAccountReports(account_id);
+            return {
+              content: [{ type: "text", text: JSON.stringify(reports, null, 2) }]
+            };
+          }
+
+          case "canvas_create_account_report": {
+            const createReportArgs = args as unknown as CreateReportArgs;
+            if (!createReportArgs.account_id || !createReportArgs.report) {
+              throw new Error("Missing required fields: account_id and report");
+            }
+            
+            const report = await this.client.createAccountReport(createReportArgs);
+            return {
+              content: [{ type: "text", text: JSON.stringify(report, null, 2) }]
+            };
+          }
+          
           default:
             throw new Error(`Unknown tool: ${toolName}`);
         }
@@ -1289,7 +1483,7 @@ async function main() {
 
   const config: MCPServerConfig = {
     name: "canvas-mcp-server",
-    version: "2.0.0",
+    version: "2.2.0",
     canvas: {
       token,
       domain,

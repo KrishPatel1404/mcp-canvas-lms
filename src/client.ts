@@ -32,7 +32,13 @@ import {
   CanvasSyllabus,
   CanvasDashboard,
   SubmitAssignmentArgs,
-  FileUploadArgs
+  FileUploadArgs,
+  CanvasAccount,
+  CreateUserArgs,
+  CanvasAccountReport,
+  CreateReportArgs,
+  ListAccountCoursesArgs,
+  ListAccountUsersArgs
 } from './types.js';
 
 export class CanvasClient {
@@ -188,8 +194,9 @@ export class CanvasClient {
   }
 
   async createCourse(args: CreateCourseArgs): Promise<CanvasCourse> {
-    const response = await this.client.post('/courses', {
-      course: args
+    const { account_id, ...courseData } = args;
+    const response = await this.client.post(`/accounts/${account_id}/courses`, {
+      course: courseData
     });
     return response.data;
   }
@@ -700,6 +707,58 @@ export class CanvasClient {
     }
 
     const response = await this.client.get(`/accounts/${accountId}/scopes`, { params });
+    return response.data;
+  }
+
+  // ---------------------
+  // ACCOUNT MANAGEMENT (New)
+  // ---------------------
+  async getAccount(accountId: number): Promise<CanvasAccount> {
+    const response = await this.client.get(`/accounts/${accountId}`);
+    return response.data;
+  }
+
+  async listAccountCourses(args: ListAccountCoursesArgs): Promise<CanvasCourse[]> {
+    const { account_id, ...params } = args;
+    const response = await this.client.get(`/accounts/${account_id}/courses`, { params });
+    return response.data;
+  }
+
+  async listAccountUsers(args: ListAccountUsersArgs): Promise<CanvasUser[]> {
+    const { account_id, ...params } = args;
+    const response = await this.client.get(`/accounts/${account_id}/users`, { params });
+    return response.data;
+  }
+
+  async createUser(args: CreateUserArgs): Promise<CanvasUser> {
+    const { account_id, ...userData } = args;
+    const response = await this.client.post(`/accounts/${account_id}/users`, userData);
+    return response.data;
+  }
+
+  async listSubAccounts(accountId: number): Promise<CanvasAccount[]> {
+    const response = await this.client.get(`/accounts/${accountId}/sub_accounts`);
+    return response.data;
+  }
+
+  // ---------------------
+  // ACCOUNT REPORTS (New)
+  // ---------------------
+  async getAccountReports(accountId: number): Promise<any[]> {
+    const response = await this.client.get(`/accounts/${accountId}/reports`);
+    return response.data;
+  }
+
+  async createAccountReport(args: CreateReportArgs): Promise<CanvasAccountReport> {
+    const { account_id, report, parameters } = args;
+    const response = await this.client.post(`/accounts/${account_id}/reports/${report}`, {
+      parameters: parameters || {}
+    });
+    return response.data;
+  }
+
+  async getAccountReport(accountId: number, reportType: string, reportId: number): Promise<CanvasAccountReport> {
+    const response = await this.client.get(`/accounts/${accountId}/reports/${reportType}/${reportId}`);
     return response.data;
   }
 }
