@@ -68,7 +68,7 @@ export class CanvasClient {
     // Request interceptor for logging
     this.client.interceptors.request.use(
       (config) => {
-        console.log(`[Canvas API] ${config.method?.toUpperCase()} ${config.url}`);
+        console.error(`[Canvas API] ${config.method?.toUpperCase()} ${config.url}`);
         return config;
       },
       (error) => {
@@ -109,7 +109,7 @@ export class CanvasClient {
           config.__retryCount++;
           
           const delay = this.retryDelay * Math.pow(2, config.__retryCount - 1); // Exponential backoff
-          console.log(`[Canvas API] Retrying request (${config.__retryCount}/${this.maxRetries}) after ${delay}ms`);
+          console.error(`[Canvas API] Retrying request (${config.__retryCount}/${this.maxRetries}) after ${delay}ms`);
           
           await this.sleep(delay);
           return this.client.request(config);
@@ -119,7 +119,7 @@ export class CanvasClient {
         if (error.response) {
           const { status, data, headers } = error.response;
           const contentType = headers?.['content-type'] || 'unknown';
-          console.log(`[Canvas API] Error response: ${status}, Content-Type: ${contentType}, Data type: ${typeof data}`);
+          console.error(`[Canvas API] Error response: ${status}, Content-Type: ${contentType}, Data type: ${typeof data}`);
           
           let errorMessage: string;
           

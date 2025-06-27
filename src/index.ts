@@ -1049,7 +1049,7 @@ class CanvasMCPServer {
         const args = request.params.arguments || {};
         const toolName = request.params.name;
         
-        console.log(`[Canvas MCP] Executing tool: ${toolName}`);
+        console.error(`[Canvas MCP] Executing tool: ${toolName}`);
         
         switch (toolName) {
           // Health check
@@ -1483,7 +1483,7 @@ async function main() {
 
   const config: MCPServerConfig = {
     name: "canvas-mcp-server",
-    version: "2.2.1",
+    version: "2.2.2",
     canvas: {
       token,
       domain,
