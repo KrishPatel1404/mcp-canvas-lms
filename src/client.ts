@@ -72,7 +72,7 @@ export class CanvasClient {
         return config;
       },
       (error) => {
-        console.error('[Canvas API] Request error:', error);
+        console.error('[Canvas API] Request error:', error.message || error);
         return Promise.reject(error);
       }
     );
@@ -82,9 +82,10 @@ export class CanvasClient {
       async (response) => {
         const { headers, data } = response;
         const linkHeader = headers.link;
+        const contentType = headers['content-type'] || '';
 
-        // Handle pagination automatically
-        if (Array.isArray(data) && linkHeader) {
+        // Only handle pagination for JSON responses
+        if (Array.isArray(data) && linkHeader && contentType.includes('application/json')) {
           let allData = [...data];
           let nextUrl = this.getNextPageUrl(linkHeader);
 
@@ -114,16 +115,53 @@ export class CanvasClient {
           return this.client.request(config);
         }
 
-        // Transform error
+        // Transform error with better handling for non-JSON responses
         if (error.response) {
-          const { status, data } = error.response;
+          const { status, data, headers } = error.response;
+          const contentType = headers?.['content-type'] || 'unknown';
+          console.log(`[Canvas API] Error response: ${status}, Content-Type: ${contentType}, Data type: ${typeof data}`);
+          
+          let errorMessage: string;
+          
+          try {
+            // Check if data is already a string (HTML error pages, plain text, etc.)
+            if (typeof data === 'string') {
+              errorMessage = data.length > 200 ? data.substring(0, 200) + '...' : data;
+            } else if (data && typeof data === 'object') {
+              // Handle structured Canvas API error responses
+              if ((data as any)?.message) {
+                errorMessage = (data as any).message;
+              } else if ((data as any)?.errors && Array.isArray((data as any).errors)) {
+                errorMessage = (data as any).errors.map((err: any) => err.message || err).join(', ');
+              } else {
+                errorMessage = JSON.stringify(data);
+              }
+            } else {
+              errorMessage = String(data);
+            }
+          } catch (jsonError) {
+            // Fallback if JSON operations fail
+            errorMessage = String(data);
+          }
+          
           throw new CanvasAPIError(
-            `Canvas API Error (${status}): ${((data as any)?.message) || JSON.stringify(data)}`, 
+            `Canvas API Error (${status}): ${errorMessage}`, 
             status, 
             data
           );
         }
         
+        // Handle network errors or other issues
+        if (error.request) {
+          console.error('[Canvas API] Network error - no response received:', error.message);
+          throw new CanvasAPIError(
+            `Network error: ${error.message}`,
+            0,
+            null
+          );
+        }
+        
+        console.error('[Canvas API] Unexpected error:', error.message);
         throw error;
       }
     );

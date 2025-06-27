@@ -1,6 +1,6 @@
 {
   "name": "canvas-mcp-server",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "A comprehensive Model Context Protocol (MCP) server for Canvas LMS with full student functionality and account management",
   "type": "module",
   "main": "build/index.js",
@@ -41,6 +41,8 @@
     "deploy": "./scripts/deploy.sh",
     "inspector": "npx @modelcontextprotocol/inspector build/index.js",
     "publish": "npm run build",
+    "release": "./release.sh",
+    "release:dry-run": "echo 'Dry run mode - no actual publishing' && npm run build && npm run type-check",
     "precommit": "npm run lint && npm run type-check && npm run test:unit"
   },
   "repository": {

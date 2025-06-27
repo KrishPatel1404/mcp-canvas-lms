@@ -1483,7 +1483,7 @@ async function main() {
 
   const config: MCPServerConfig = {
     name: "canvas-mcp-server",
-    version: "2.2.0",
+    version: "2.2.1",
     canvas: {
       token,
       domain,
