@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.3] - 2025-06-27
+
+### Fixed
+- **Course Creation Parameters Issue**: Fixed missing `restrict_enrollments_to_course_dates` and other Canvas course parameters in tool schemas
+  - Added `restrict_enrollments_to_course_dates` parameter to `canvas_create_course` and `canvas_update_course` tools
+  - Added missing course parameters: `is_public_to_auth_users`, `public_syllabus`, `public_syllabus_to_auth`, `public_description`
+  - Added missing course settings: `allow_student_wiki_edits`, `allow_wiki_comments`, `allow_student_forum_attachments`
+  - Added missing enrollment options: `open_enrollment`, `self_enrollment`
+  - Added missing course metadata: `term_id`, `sis_course_id`, `integration_id`
+  - Added missing course preferences: `hide_final_grades`, `apply_assignment_group_weights`, `time_zone`
+
+### Technical Details
+- Updated `canvas_create_course` inputSchema to include all parameters from `CreateCourseArgs` interface
+- Updated `canvas_update_course` inputSchema to include all parameters from `UpdateCourseArgs` interface
+- Fixed parameter filtering issue where MCP server was ignoring parameters not defined in inputSchema
+- All course creation/update parameters now properly passed to Canvas API
+
+### Impact
+- Course date restrictions now work properly when `restrict_enrollments_to_course_dates: true` is set
+- All Canvas course configuration options are now available through the MCP tools
+- No breaking changes - fully backward compatible
+
+### GitHub Issue
+- Resolves: [#9 restrict_enrollments_to_course_dates not respected when creating Canvas courses](https://github.com/DMontgomery40/mcp-canvas-lms/issues/9)
+
 ## [2.2.2] - 2025-06-27
 
 ### Fixed

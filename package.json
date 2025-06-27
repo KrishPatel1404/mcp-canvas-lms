@@ -1,6 +1,6 @@
 {
   "name": "canvas-mcp-server",
-  "version": "2.2.2",
+  "version": "2.2.3",
   "description": "A comprehensive Model Context Protocol (MCP) server for Canvas LMS with full student functionality and account management",
   "type": "module",
   "main": "build/index.js",

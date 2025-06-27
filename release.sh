@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Canvas MCP Server Release Script v2.2.1
+# Canvas MCP Server Release Script v2.2.3
 # Handles build, git operations, and npm publishing
 
 set -e
 
-echo "🚀 Canvas MCP Server Release Script v2.2.1"
+echo "🚀 Canvas MCP Server Release Script v2.2.3"
 echo "========================================="
 
 # Colors for output
