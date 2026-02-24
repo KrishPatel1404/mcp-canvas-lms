@@ -1,9 +1,13 @@
-# Canvas MCP Server v2.2.0
+# Canvas MCP Server v2.3.0
 
 > A comprehensive Model Context Protocol (MCP) server for Canvas LMS with complete student, instructor, and account administration functionality
 
-## 🚀 What's New in v2.2.0
+## 🚀 What's New in v2.3.0
 
+- **🌐 NEW**: Streamable HTTP transport support (`MCP_TRANSPORT=streamable-http`)
+- **🖥️ Preserved**: First-class stdio transport for local MCP clients
+- **🧪 Added**: Behavior tests for lifecycle, transports, and structured failure-path errors
+- **🧱 Improved**: Stricter tool schemas and codemode-oriented tool descriptions
 - **🔧 FIXED**: Course creation "page not found" error (missing `account_id` parameter)
 - **👨‍💼 Account Management**: Complete account-level administration tools
 - **📊 Reports & Analytics**: Generate and access Canvas account reports  
@@ -81,9 +85,40 @@ canvas-mcp-server
 ```bash
 docker run -d \
   --name canvas-mcp \
+  -p 3000:3000 \
   -e CANVAS_API_TOKEN="your_token" \
   -e CANVAS_DOMAIN="school.instructure.com" \
+  -e MCP_TRANSPORT="streamable-http" \
+  -e MCP_HTTP_HOST="0.0.0.0" \
+  -e MCP_HTTP_PORT="3000" \
+  -e MCP_HTTP_PATH="/mcp" \
   ghcr.io/dmontgomery40/mcp-canvas-lms:latest
+```
+
+## Transport Modes
+
+The server supports two explicit transport modes:
+
+- `stdio` (default): best for Claude Desktop/Codex/Cursor local MCP wiring.
+- `streamable-http`: best for local HTTP integrations and containerized workflows.
+
+### Transport environment variables
+
+```bash
+# Required Canvas auth
+CANVAS_API_TOKEN=your_token
+CANVAS_DOMAIN=your_school.instructure.com
+
+# Transport selection
+MCP_TRANSPORT=stdio # or streamable-http
+
+# Streamable HTTP settings
+MCP_HTTP_HOST=127.0.0.1
+MCP_HTTP_PORT=3000
+MCP_HTTP_PATH=/mcp
+MCP_HTTP_STATEFUL=true
+MCP_HTTP_JSON_RESPONSE=true
+MCP_HTTP_ALLOWED_ORIGINS=
 ```
 
 ## 💼 Account Admin Workflow Examples
@@ -368,6 +403,59 @@ npm run dev:watch
 - 🐛 **Bug Reports**: [GitHub Issues](https://github.com/DMontgomery40/mcp-canvas-lms/issues)
 - 💬 **Questions**: [GitHub Discussions](https://github.com/DMontgomery40/mcp-canvas-lms/discussions)
 - 📖 **Documentation**: [Wiki](https://github.com/DMontgomery40/mcp-canvas-lms/wiki)
+
+## Appendix: MCP in Practice (Code Execution, Tool Scale, and Safety)
+
+Last updated: 2026-02-24
+
+### Why This Appendix Exists
+MCP is still one of the most useful interoperability layers for agentic tooling. The tradeoff is that large MCP servers can expose dozens of tools, and naive tool-calling can flood context windows with tool schemas, call traces, and low-signal chatter.
+
+In practice, larger tool surfaces only help when orchestration stays token-efficient and execution behavior is constrained.
+
+### The Shift to Code Execution / Code Mode
+Recent production workflows move orchestration out of conversational turns and into executable loops. This keeps context overhead lower, improves determinism, and makes runs auditable.
+
+Core reading:
+- [Cloudflare: Code Mode](https://blog.cloudflare.com/code-mode/)
+- [Cloudflare: Code Execution with MCP](https://blog.cloudflare.com/code-execution-with-mcp/)
+- [Anthropic: Code Execution with MCP](https://www.anthropic.com/engineering/code-execution-with-mcp)
+
+### Recommended Setup for Power Users
+For lower-noise, repeatable MCP usage, start with codemode-oriented routing:
+- [codemode-mcp (jx-codes)](https://github.com/jx-codes/codemode-mcp)
+- [UTCP](https://www.utcp.io)
+
+Even with strong setup, model behavior can be hit-or-miss across providers and versions. Keep retries and deterministic fallbacks.
+
+### Peter Steinberger Workflow Pattern
+A high-leverage pattern is turning broad MCP tool surfaces into narrower CLI/task interfaces:
+- [MCPorter](https://github.com/steipete/mcporter)
+- [OpenClaw](https://github.com/steipete/openclaw)
+
+### What Works Best With Which MCP Clients
+- Claude Code / Codex / Cursor agent workflows: usually strong for direct MCP + code-execution loops.
+- Thin hosted chat clients: often safer with wrapped CLIs/gateways instead of full raw tool exposure.
+- High-tool-count servers: usually better when split into narrow task gateways.
+
+This ecosystem changes quickly. If you are reading this now, parts of this section may already be out of date.
+
+### Prompt Injection: Risks, Consequences, and Mitigations
+Prompt injection remains an open problem for tool-using agents. It is manageable, but not solved.
+
+Primary risks:
+- Hidden instructions in retrieved content or tool output.
+- Secret/token exfiltration through unintended calls.
+- Unauthorized state changes in systems or data.
+
+Mitigation baseline:
+- Least-privilege credentials and scoped tokens.
+- Destination/action allowlists and strict schema validation.
+- Human confirmation for destructive operations.
+- Sandboxed execution and resource limits.
+- Structured logging and replayable execution traces.
+
+Treat every tool output as untrusted input unless explicitly verified.
 
 ## 📄 License
 

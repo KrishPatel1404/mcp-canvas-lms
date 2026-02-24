@@ -1,54 +1,37 @@
-FROM node:20-alpine AS builder
-
-# Install build dependencies
-RUN apk add --no-cache python3 make g++
+FROM node:20.19-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
-COPY tsconfig.json ./
+COPY package*.json tsconfig.json ./
+RUN npm ci
 
-# Install dependencies
-RUN npm ci --only=production=false
-
-# Copy source code
-COPY src/ src/
-
-# Build the application
+COPY src ./src
 RUN npm run build
 
-# Production stage
-FROM node:20-alpine AS production
+FROM node:20.19-alpine AS runtime
 
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S canvas -u 1001
+LABEL org.opencontainers.image.title="canvas-mcp-server"
+LABEL org.opencontainers.image.description="Model Context Protocol server for Canvas LMS"
+LABEL org.opencontainers.image.source="https://github.com/DMontgomery40/mcp-canvas-lms"
+LABEL org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
 
-# Copy package files
+ENV NODE_ENV=production
+ENV MCP_TRANSPORT=stdio
+ENV MCP_HTTP_HOST=0.0.0.0
+ENV MCP_HTTP_PORT=3000
+ENV MCP_HTTP_PATH=/mcp
+ENV MCP_HTTP_STATEFUL=true
+ENV MCP_HTTP_JSON_RESPONSE=true
+ENV MCP_HTTP_ALLOWED_ORIGINS=
+
 COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 
-# Install only production dependencies
-RUN npm ci --only=production && npm cache clean --force
-
-# Copy built application
 COPY --from=builder /app/build ./build
-COPY --chown=canvas:nodejs . .
 
-# Switch to non-root user
-USER canvas
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD node -e "import('./build/client.js').then(m => new m.CanvasClient(process.env.CANVAS_API_TOKEN, process.env.CANVAS_DOMAIN).healthCheck()).then(() => process.exit(0)).catch(() => process.exit(1))"
-
-# Expose port
+USER node
 EXPOSE 3000
 
-# Set environment
-ENV NODE_ENV=production
-
-# Command to run the application
 CMD ["node", "build/index.js"]

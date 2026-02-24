@@ -687,10 +687,25 @@ export interface CanvasClientConfig {
   timeout?: number;
 }
 
+export interface MCPTransportHttpConfig {
+  host?: string;
+  port?: number;
+  path?: string;
+  statefulSession?: boolean;
+  enableJsonResponse?: boolean;
+  allowedOrigins?: string[];
+}
+
+export interface MCPTransportConfig {
+  mode: 'stdio' | 'streamable-http';
+  http?: MCPTransportHttpConfig;
+}
+
 export interface MCPServerConfig {
   name: string;
   version: string;
   canvas: CanvasClientConfig;
+  transport?: MCPTransportConfig;
   logging?: {
     level: 'debug' | 'info' | 'warn' | 'error';
     destination?: string;

@@ -1,6 +1,6 @@
 {
   "name": "canvas-mcp-server",
-  "version": "2.2.3",
+  "version": "2.3.0",
   "description": "A comprehensive Model Context Protocol (MCP) server for Canvas LMS with full student functionality and account management",
   "type": "module",
   "main": "build/index.js",
@@ -21,11 +21,11 @@
     "start": "node build/index.js",
     "dev": "npm run build && npm run start",
     "dev:watch": "concurrently \"npm run build:watch\" \"nodemon build/index.js\"",
-    "test": "vitest",
-    "test:unit": "vitest --run tests/",
-    "test:integration": "vitest --run tests/integration.test.ts",
-    "test:watch": "vitest --watch",
-    "coverage": "vitest --run --coverage",
+    "test": "vitest --run --config ./vitest.config.ts",
+    "test:unit": "vitest --run --config ./vitest.config.ts tests",
+    "test:integration": "vitest --run --config ./vitest.config.ts tests/integration.test.ts",
+    "test:watch": "vitest --watch --config ./vitest.config.ts",
+    "coverage": "vitest --run --config ./vitest.config.ts --coverage",
     "lint": "eslint src tests --ext .ts,.js",
     "lint:fix": "eslint src tests --ext .ts,.js --fix",
     "format": "prettier --write \"src/**/*.{ts,js,json}\" \"tests/**/*.{ts,js,json}\"",
@@ -73,15 +73,15 @@
     "npm": ">=8.0.0"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.3",
-    "axios": "^1.7.2",
-    "dotenv": "^16.4.7"
+    "@modelcontextprotocol/sdk": "^1.27.0",
+    "axios": "^1.13.5",
+    "dotenv": "^17.3.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
-    "@vitest/coverage-v8": "^1.6.0",
+    "@vitest/coverage-v8": "^4.0.18",
     "concurrently": "^8.2.2",
     "eslint": "^8.57.0",
     "eslint-config-prettier": "^9.1.0",
@@ -91,8 +91,8 @@
     "nodemon": "^3.1.0",
     "prettier": "^3.2.5",
     "rimraf": "^5.0.5",
-    "typescript": "^5.4.5",
-    "vitest": "^1.6.0"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   },
   "files": [
     "build/**/*",

@@ -4,6 +4,7 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ListResourcesRequestSchema,
@@ -28,14 +29,19 @@ import {
   CreateUserArgs,
   ListAccountCoursesArgs,
   ListAccountUsersArgs,
-  CreateReportArgs
+  CreateReportArgs,
+  CanvasAPIError
 } from "./types.js";
+import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
+import { type Readable, type Writable } from "node:stream";
+import { type AddressInfo } from "node:net";
+import { randomUUID } from "node:crypto";
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
 // Enhanced tools list with all student-focused endpoints
-const TOOLS: Tool[] = [
+const RAW_TOOLS: Tool[] = [
   // Health and system tools
   {
     name: "canvas_health_check",
@@ -820,15 +826,165 @@ const TOOLS: Tool[] = [
   }
 ];
 
-class CanvasMCPServer {
-  private server: Server;
-  private client: CanvasClient;
-  private config: MCPServerConfig;
+type StructuredToolError = {
+  status: "error";
+  retryable: boolean;
+  suggestion: string;
+  message: string;
+  code: "validation_error" | "canvas_api_error" | "unknown_tool" | "internal_error";
+  tool: string;
+};
 
-  constructor(config: MCPServerConfig) {
+type StreamableHttpRuntime = {
+  transport: StreamableHTTPServerTransport;
+  httpServer: HttpServer;
+};
+
+const READ_ONLY_TOOL_PREFIXES = ["canvas_list_", "canvas_get_", "canvas_health_check"] as const;
+const MUTATING_TOOL_PREFIXES = [
+  "canvas_create_",
+  "canvas_update_",
+  "canvas_submit_",
+  "canvas_enroll_",
+  "canvas_mark_",
+  "canvas_post_",
+  "canvas_start_"
+] as const;
+
+function toCommaList(values: string[]): string {
+  if (values.length === 0) {
+    return "none";
+  }
+
+  return values.join(", ");
+}
+
+function getInputSchema(tool: Tool): Record<string, unknown> {
+  return (tool.inputSchema as Record<string, unknown> | undefined) ?? {};
+}
+
+function getRequiredFields(tool: Tool): string[] {
+  const schema = getInputSchema(tool);
+  const required = schema.required;
+  return Array.isArray(required) ? required.filter((value): value is string => typeof value === "string") : [];
+}
+
+function getDefaultFields(tool: Tool): string[] {
+  const schema = getInputSchema(tool);
+  const properties = schema.properties as Record<string, unknown> | undefined;
+  if (!properties) {
+    return [];
+  }
+
+  return Object.entries(properties)
+    .filter(([, property]) => {
+      if (!property || typeof property !== "object") {
+        return false;
+      }
+      return Object.prototype.hasOwnProperty.call(property, "default");
+    })
+    .map(([name]) => name);
+}
+
+function isReadOnlyTool(name: string): boolean {
+  return READ_ONLY_TOOL_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
+
+function isMutatingTool(name: string): boolean {
+  return MUTATING_TOOL_PREFIXES.some((prefix) => name.startsWith(prefix));
+}
+
+function optimizeToolDescription(tool: Tool): string {
+  const required = getRequiredFields(tool);
+  const defaults = getDefaultFields(tool);
+  const sideEffect = isReadOnlyTool(tool.name)
+    ? "No Canvas state is modified."
+    : "This operation can modify Canvas state.";
+  const latencyHint = isReadOnlyTool(tool.name)
+    ? "Latency depends on Canvas API response time."
+    : "May incur extra latency due to writes and Canvas-side processing.";
+
+  return [
+    tool.description ?? "Canvas LMS tool",
+    `Required fields: ${toCommaList(required)}.`,
+    `Defaults: ${defaults.length > 0 ? defaults.join(", ") : "none"}.`,
+    sideEffect,
+    latencyHint,
+    "Use include_raw=true only when full provider payload is required."
+  ].join(" ");
+}
+
+function optimizeToolAnnotations(toolName: string): Tool["annotations"] {
+  if (isReadOnlyTool(toolName)) {
+    return {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: true
+    };
+  }
+
+  if (isMutatingTool(toolName)) {
+    return {
+      readOnlyHint: false,
+      destructiveHint: false,
+      openWorldHint: true
+    };
+  }
+
+  return {
+    readOnlyHint: false,
+    destructiveHint: false,
+    openWorldHint: true
+  };
+}
+
+function optimizeToolInputSchema(tool: Tool): Tool["inputSchema"] {
+  const schema = getInputSchema(tool);
+  const properties =
+    (schema.properties as Record<string, unknown> | undefined) ??
+    {};
+  const required =
+    (schema.required as string[] | undefined) ??
+    [];
+
+  const optimizedProperties: Record<string, unknown> = {
+    ...properties
+  };
+
+  if (!Object.prototype.hasOwnProperty.call(optimizedProperties, "include_raw")) {
+    optimizedProperties.include_raw = {
+      type: "boolean",
+      default: false,
+      description: "When true, return full raw Canvas API payload for this tool call."
+    };
+  }
+
+  return {
+    type: "object",
+    ...schema,
+    properties: optimizedProperties,
+    required,
+    additionalProperties: false
+  } as Tool["inputSchema"];
+}
+
+const TOOLS: Tool[] = RAW_TOOLS.map((tool) => ({
+  ...tool,
+  description: optimizeToolDescription(tool),
+  inputSchema: optimizeToolInputSchema(tool),
+  annotations: optimizeToolAnnotations(tool.name)
+}));
+
+export class CanvasMCPServer {
+  private readonly server: Server;
+  private readonly client: CanvasClient;
+  private readonly config: MCPServerConfig;
+  private streamableHttpRuntime: StreamableHttpRuntime | undefined;
+
+  constructor(config: MCPServerConfig, client?: CanvasClient) {
     this.config = config;
-    this.client = new CanvasClient(
-      config.canvas.token, 
+    this.client = client ?? new CanvasClient(
+      config.canvas.token,
       config.canvas.domain,
       {
         maxRetries: config.canvas.maxRetries,
@@ -857,28 +1013,81 @@ class CanvasMCPServer {
     this.server.onerror = (error) => {
       console.error(`[${this.config.name} Error]`, error);
     };
+  }
 
-    process.on('SIGINT', async () => {
-      console.log('\nReceived SIGINT, shutting down gracefully...');
-      await this.server.close();
-      process.exit(0);
-    });
+  private serializeToolOutput(payload: unknown, includeRaw: boolean): string {
+    if (includeRaw) {
+      return JSON.stringify(payload, null, 2);
+    }
 
-    process.on('SIGTERM', async () => {
-      console.log('\nReceived SIGTERM, shutting down gracefully...');
-      await this.server.close();
-      process.exit(0);
-    });
+    if (Array.isArray(payload)) {
+      return JSON.stringify(
+        {
+          count: payload.length,
+          items: payload.slice(0, 5),
+          has_more: payload.length > 5
+        },
+        null,
+        2
+      );
+    }
 
-    process.on('uncaughtException', (error) => {
-      console.error('Uncaught Exception:', error);
-      process.exit(1);
-    });
+    return JSON.stringify(payload, null, 2);
+  }
 
-    process.on('unhandledRejection', (reason, promise) => {
-      console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-      process.exit(1);
-    });
+  private isRetryable(error: unknown): boolean {
+    if (error instanceof CanvasAPIError && typeof error.statusCode === "number") {
+      return error.statusCode === 429 || error.statusCode >= 500;
+    }
+
+    const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+    return message.includes("timeout") || message.includes("temporarily") || message.includes("rate limit");
+  }
+
+  private toStructuredToolError(toolName: string, error: unknown): StructuredToolError {
+    const message = error instanceof Error ? error.message : String(error);
+
+    if (message.startsWith("Missing required field") || message.startsWith("Missing required fields")) {
+      return {
+        status: "error",
+        retryable: false,
+        suggestion: "Provide all required fields shown in tools/list inputSchema and retry.",
+        message,
+        code: "validation_error",
+        tool: toolName
+      };
+    }
+
+    if (message.startsWith("Unknown tool")) {
+      return {
+        status: "error",
+        retryable: false,
+        suggestion: "Call tools/list and use an exact tool name from that list.",
+        message,
+        code: "unknown_tool",
+        tool: toolName
+      };
+    }
+
+    if (error instanceof CanvasAPIError) {
+      return {
+        status: "error",
+        retryable: this.isRetryable(error),
+        suggestion: "Verify Canvas permissions, account/course IDs, and retry for transient Canvas failures.",
+        message,
+        code: "canvas_api_error",
+        tool: toolName
+      };
+    }
+
+    return {
+      status: "error",
+      retryable: this.isRetryable(error),
+      suggestion: "Review input values and server logs, then retry.",
+      message,
+      code: "internal_error",
+      tool: toolName
+    };
   }
 
   private setupHandlers(): void {
@@ -1075,7 +1284,9 @@ class CanvasMCPServer {
     // Handle tool calls with comprehensive error handling
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       try {
-        const args = request.params.arguments || {};
+        const rawArgs = (request.params.arguments ?? {}) as Record<string, unknown>;
+        const includeRaw = rawArgs.include_raw === true;
+        const { include_raw: _includeRaw, ...args } = rawArgs;
         const toolName = request.params.name;
         
         console.error(`[Canvas MCP] Executing tool: ${toolName}`);
@@ -1085,7 +1296,7 @@ class CanvasMCPServer {
           case "canvas_health_check": {
             const health = await this.client.healthCheck();
             return {
-              content: [{ type: "text", text: JSON.stringify(health, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(health, includeRaw) }]
             };
           }
 
@@ -1094,7 +1305,7 @@ class CanvasMCPServer {
             const { include_ended = false } = args as { include_ended?: boolean };
             const courses = await this.client.listCourses(include_ended);
             return {
-              content: [{ type: "text", text: JSON.stringify(courses, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(courses, includeRaw) }]
             };
           }
 
@@ -1104,7 +1315,7 @@ class CanvasMCPServer {
             
             const course = await this.client.getCourse(course_id);
             return {
-              content: [{ type: "text", text: JSON.stringify(course, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(course, includeRaw) }]
             };
           }
           
@@ -1115,7 +1326,7 @@ class CanvasMCPServer {
             }
             const course = await this.client.createCourse(courseArgs);
             return {
-              content: [{ type: "text", text: JSON.stringify(course, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(course, includeRaw) }]
             };
           }
           
@@ -1126,7 +1337,7 @@ class CanvasMCPServer {
             }
             const updatedCourse = await this.client.updateCourse(updateArgs);
             return {
-              content: [{ type: "text", text: JSON.stringify(updatedCourse, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(updatedCourse, includeRaw) }]
             };
           }
 
@@ -1140,7 +1351,7 @@ class CanvasMCPServer {
             
             const assignments = await this.client.listAssignments(course_id, include_submissions);
             return {
-              content: [{ type: "text", text: JSON.stringify(assignments, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(assignments, includeRaw) }]
             };
           }
 
@@ -1156,7 +1367,7 @@ class CanvasMCPServer {
             
             const assignment = await this.client.getAssignment(course_id, assignment_id, include_submission);
             return {
-              content: [{ type: "text", text: JSON.stringify(assignment, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(assignment, includeRaw) }]
             };
           }
           
@@ -1167,7 +1378,7 @@ class CanvasMCPServer {
             }
             const assignment = await this.client.createAssignment(assignmentArgs);
             return {
-              content: [{ type: "text", text: JSON.stringify(assignment, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(assignment, includeRaw) }]
             };
           }
           
@@ -1178,7 +1389,7 @@ class CanvasMCPServer {
             }
             const updatedAssignment = await this.client.updateAssignment(updateAssignmentArgs);
             return {
-              content: [{ type: "text", text: JSON.stringify(updatedAssignment, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(updatedAssignment, includeRaw) }]
             };
           }
 
@@ -1188,7 +1399,7 @@ class CanvasMCPServer {
             
             const groups = await this.client.listAssignmentGroups(course_id);
             return {
-              content: [{ type: "text", text: JSON.stringify(groups, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(groups, includeRaw) }]
             };
           }
 
@@ -1205,7 +1416,7 @@ class CanvasMCPServer {
             
             const submission = await this.client.getSubmission(course_id, assignment_id, user_id || 'self');
             return {
-              content: [{ type: "text", text: JSON.stringify(submission, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(submission, includeRaw) }]
             };
           }
 
@@ -1219,7 +1430,7 @@ class CanvasMCPServer {
 
             const submission = await this.client.submitAssignment(submitArgs);
             return {
-              content: [{ type: "text", text: JSON.stringify(submission, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(submission, includeRaw) }]
             };
           }
           
@@ -1231,7 +1442,7 @@ class CanvasMCPServer {
             }
             const submission = await this.client.submitGrade(gradeArgs);
             return {
-              content: [{ type: "text", text: JSON.stringify(submission, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(submission, includeRaw) }]
             };
           }
 
@@ -1242,7 +1453,7 @@ class CanvasMCPServer {
             
             const files = await this.client.listFiles(course_id, folder_id);
             return {
-              content: [{ type: "text", text: JSON.stringify(files, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(files, includeRaw) }]
             };
           }
 
@@ -1252,7 +1463,7 @@ class CanvasMCPServer {
             
             const file = await this.client.getFile(file_id);
             return {
-              content: [{ type: "text", text: JSON.stringify(file, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(file, includeRaw) }]
             };
           }
 
@@ -1262,7 +1473,7 @@ class CanvasMCPServer {
             
             const folders = await this.client.listFolders(course_id);
             return {
-              content: [{ type: "text", text: JSON.stringify(folders, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(folders, includeRaw) }]
             };
           }
 
@@ -1273,7 +1484,7 @@ class CanvasMCPServer {
             
             const pages = await this.client.listPages(course_id);
             return {
-              content: [{ type: "text", text: JSON.stringify(pages, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(pages, includeRaw) }]
             };
           }
 
@@ -1285,7 +1496,7 @@ class CanvasMCPServer {
             
             const page = await this.client.getPage(course_id, page_url);
             return {
-              content: [{ type: "text", text: JSON.stringify(page, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(page, includeRaw) }]
             };
           }
 
@@ -1294,7 +1505,7 @@ class CanvasMCPServer {
             const { start_date, end_date } = args as { start_date?: string; end_date?: string };
             const events = await this.client.listCalendarEvents(start_date, end_date);
             return {
-              content: [{ type: "text", text: JSON.stringify(events, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(events, includeRaw) }]
             };
           }
 
@@ -1302,7 +1513,7 @@ class CanvasMCPServer {
             const { limit = 10 } = args as { limit?: number };
             const assignments = await this.client.getUpcomingAssignments(limit);
             return {
-              content: [{ type: "text", text: JSON.stringify(assignments, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(assignments, includeRaw) }]
             };
           }
 
@@ -1310,14 +1521,14 @@ class CanvasMCPServer {
           case "canvas_get_dashboard": {
             const dashboard = await this.client.getDashboard();
             return {
-              content: [{ type: "text", text: JSON.stringify(dashboard, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(dashboard, includeRaw) }]
             };
           }
 
           case "canvas_get_dashboard_cards": {
             const cards = await this.client.getDashboardCards();
             return {
-              content: [{ type: "text", text: JSON.stringify(cards, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(cards, includeRaw) }]
             };
           }
 
@@ -1325,7 +1536,7 @@ class CanvasMCPServer {
           case "canvas_get_user_profile": {
             const profile = await this.client.getUserProfile();
             return {
-              content: [{ type: "text", text: JSON.stringify(profile, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(profile, includeRaw) }]
             };
           }
 
@@ -1333,7 +1544,7 @@ class CanvasMCPServer {
             const profileData = args as Partial<{ name: string; short_name: string; bio: string; title: string; time_zone: string }>;
             const updatedProfile = await this.client.updateUserProfile(profileData);
             return {
-              content: [{ type: "text", text: JSON.stringify(updatedProfile, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(updatedProfile, includeRaw) }]
             };
           }
 
@@ -1344,7 +1555,7 @@ class CanvasMCPServer {
             }
             const enrollment = await this.client.enrollUser(enrollArgs);
             return {
-              content: [{ type: "text", text: JSON.stringify(enrollment, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(enrollment, includeRaw) }]
             };
           }
 
@@ -1355,19 +1566,237 @@ class CanvasMCPServer {
             
             const grades = await this.client.getCourseGrades(course_id);
             return {
-              content: [{ type: "text", text: JSON.stringify(grades, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(grades, includeRaw) }]
             };
           }
 
           case "canvas_get_user_grades": {
             const grades = await this.client.getUserGrades();
             return {
-              content: [{ type: "text", text: JSON.stringify(grades, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(grades, includeRaw) }]
             };
           }
 
-          // Continue with all other tools...
-          // [I'll include the rest in the same pattern]
+          // Modules
+          case "canvas_list_modules": {
+            const { course_id } = args as { course_id: number };
+            if (!course_id) throw new Error("Missing required field: course_id");
+
+            const modules = await this.client.listModules(course_id);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(modules, includeRaw) }]
+            };
+          }
+
+          case "canvas_get_module": {
+            const { course_id, module_id } = args as { course_id: number; module_id: number };
+            if (!course_id || !module_id) {
+              throw new Error("Missing required fields: course_id and module_id");
+            }
+
+            const module = await this.client.getModule(course_id, module_id);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(module, includeRaw) }]
+            };
+          }
+
+          case "canvas_list_module_items": {
+            const { course_id, module_id } = args as { course_id: number; module_id: number };
+            if (!course_id || !module_id) {
+              throw new Error("Missing required fields: course_id and module_id");
+            }
+
+            const moduleItems = await this.client.listModuleItems(course_id, module_id);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(moduleItems, includeRaw) }]
+            };
+          }
+
+          case "canvas_get_module_item": {
+            const { course_id, module_id, item_id } = args as { course_id: number; module_id: number; item_id: number };
+            if (!course_id || !module_id || !item_id) {
+              throw new Error("Missing required fields: course_id, module_id, and item_id");
+            }
+
+            const moduleItem = await this.client.getModuleItem(course_id, module_id, item_id);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(moduleItem, includeRaw) }]
+            };
+          }
+
+          case "canvas_mark_module_item_complete": {
+            const { course_id, module_id, item_id } = args as { course_id: number; module_id: number; item_id: number };
+            if (!course_id || !module_id || !item_id) {
+              throw new Error("Missing required fields: course_id, module_id, and item_id");
+            }
+
+            await this.client.markModuleItemComplete(course_id, module_id, item_id);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput({ status: "ok" }, includeRaw) }]
+            };
+          }
+
+          // Discussions and announcements
+          case "canvas_list_discussion_topics": {
+            const { course_id } = args as { course_id: number };
+            if (!course_id) throw new Error("Missing required field: course_id");
+
+            const topics = await this.client.listDiscussionTopics(course_id);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(topics, includeRaw) }]
+            };
+          }
+
+          case "canvas_get_discussion_topic": {
+            const { course_id, topic_id } = args as { course_id: number; topic_id: number };
+            if (!course_id || !topic_id) {
+              throw new Error("Missing required fields: course_id and topic_id");
+            }
+
+            const topic = await this.client.getDiscussionTopic(course_id, topic_id);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(topic, includeRaw) }]
+            };
+          }
+
+          case "canvas_post_to_discussion": {
+            const { course_id, topic_id, message } = args as { course_id: number; topic_id: number; message: string };
+            if (!course_id || !topic_id || !message) {
+              throw new Error("Missing required fields: course_id, topic_id, and message");
+            }
+
+            const post = await this.client.postToDiscussion(course_id, topic_id, message);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(post, includeRaw) }]
+            };
+          }
+
+          case "canvas_list_announcements": {
+            const { course_id } = args as { course_id: number };
+            if (!course_id) throw new Error("Missing required field: course_id");
+
+            const announcements = await this.client.listAnnouncements(String(course_id));
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(announcements, includeRaw) }]
+            };
+          }
+
+          // Quizzes
+          case "canvas_list_quizzes": {
+            const { course_id } = args as { course_id: number };
+            if (!course_id) throw new Error("Missing required field: course_id");
+
+            const quizzes = await this.client.listQuizzes(String(course_id));
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(quizzes, includeRaw) }]
+            };
+          }
+
+          case "canvas_get_quiz": {
+            const { course_id, quiz_id } = args as { course_id: number; quiz_id: number };
+            if (!course_id || !quiz_id) {
+              throw new Error("Missing required fields: course_id and quiz_id");
+            }
+
+            const quiz = await this.client.getQuiz(String(course_id), quiz_id);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(quiz, includeRaw) }]
+            };
+          }
+
+          case "canvas_create_quiz": {
+            const { course_id, ...quizData } = args as { course_id: number; title?: string; [key: string]: unknown };
+            if (!course_id || !quizData.title) {
+              throw new Error("Missing required fields: course_id and title");
+            }
+
+            const quiz = await this.client.createQuiz(course_id, quizData);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(quiz, includeRaw) }]
+            };
+          }
+
+          case "canvas_start_quiz_attempt": {
+            const { course_id, quiz_id } = args as { course_id: number; quiz_id: number };
+            if (!course_id || !quiz_id) {
+              throw new Error("Missing required fields: course_id and quiz_id");
+            }
+
+            const quizAttempt = await this.client.startQuizAttempt(course_id, quiz_id);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(quizAttempt, includeRaw) }]
+            };
+          }
+
+          // Rubrics
+          case "canvas_list_rubrics": {
+            const { course_id } = args as { course_id: number };
+            if (!course_id) throw new Error("Missing required field: course_id");
+
+            const rubrics = await this.client.listRubrics(course_id);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(rubrics, includeRaw) }]
+            };
+          }
+
+          case "canvas_get_rubric": {
+            const { course_id, rubric_id } = args as { course_id: number; rubric_id: number };
+            if (!course_id || !rubric_id) {
+              throw new Error("Missing required fields: course_id and rubric_id");
+            }
+
+            const rubric = await this.client.getRubric(course_id, rubric_id);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(rubric, includeRaw) }]
+            };
+          }
+
+          // Conversations and notifications
+          case "canvas_list_conversations": {
+            const conversations = await this.client.listConversations();
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(conversations, includeRaw) }]
+            };
+          }
+
+          case "canvas_get_conversation": {
+            const { conversation_id } = args as { conversation_id: number };
+            if (!conversation_id) throw new Error("Missing required field: conversation_id");
+
+            const conversation = await this.client.getConversation(conversation_id);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(conversation, includeRaw) }]
+            };
+          }
+
+          case "canvas_create_conversation": {
+            const { recipients, body, subject } = args as { recipients: string[]; body: string; subject?: string };
+            if (!recipients || recipients.length === 0 || !body) {
+              throw new Error("Missing required fields: recipients and body");
+            }
+
+            const conversation = await this.client.createConversation(recipients, body, subject);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(conversation, includeRaw) }]
+            };
+          }
+
+          case "canvas_list_notifications": {
+            const notifications = await this.client.listNotifications();
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(notifications, includeRaw) }]
+            };
+          }
+
+          case "canvas_get_syllabus": {
+            const { course_id } = args as { course_id: number };
+            if (!course_id) throw new Error("Missing required field: course_id");
+
+            const syllabus = await this.client.getSyllabus(course_id);
+            return {
+              content: [{ type: "text", text: this.serializeToolOutput(syllabus, includeRaw) }]
+            };
+          }
           
           // Account Management
           case "canvas_get_account": {
@@ -1376,7 +1805,7 @@ class CanvasMCPServer {
             
             const account = await this.client.getAccount(account_id);
             return {
-              content: [{ type: "text", text: JSON.stringify(account, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(account, includeRaw) }]
             };
           }
 
@@ -1388,7 +1817,7 @@ class CanvasMCPServer {
             
             const courses = await this.client.listAccountCourses(accountCoursesArgs);
             return {
-              content: [{ type: "text", text: JSON.stringify(courses, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(courses, includeRaw) }]
             };
           }
 
@@ -1400,7 +1829,7 @@ class CanvasMCPServer {
             
             const users = await this.client.listAccountUsers(accountUsersArgs);
             return {
-              content: [{ type: "text", text: JSON.stringify(users, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(users, includeRaw) }]
             };
           }
 
@@ -1412,7 +1841,7 @@ class CanvasMCPServer {
             
             const user = await this.client.createUser(createUserArgs);
             return {
-              content: [{ type: "text", text: JSON.stringify(user, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(user, includeRaw) }]
             };
           }
 
@@ -1422,7 +1851,7 @@ class CanvasMCPServer {
             
             const subAccounts = await this.client.listSubAccounts(account_id);
             return {
-              content: [{ type: "text", text: JSON.stringify(subAccounts, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(subAccounts, includeRaw) }]
             };
           }
 
@@ -1432,7 +1861,7 @@ class CanvasMCPServer {
             
             const reports = await this.client.getAccountReports(account_id);
             return {
-              content: [{ type: "text", text: JSON.stringify(reports, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(reports, includeRaw) }]
             };
           }
 
@@ -1444,7 +1873,7 @@ class CanvasMCPServer {
             
             const report = await this.client.createAccountReport(createReportArgs);
             return {
-              content: [{ type: "text", text: JSON.stringify(report, null, 2) }]
+              content: [{ type: "text", text: this.serializeToolOutput(report, includeRaw) }]
             };
           }
           
@@ -1453,37 +1882,206 @@ class CanvasMCPServer {
         }
       } catch (error) {
         console.error(`Error executing tool ${request.params.name}:`, error);
+        const structuredError = this.toStructuredToolError(request.params.name, error);
         return {
           content: [{
             type: "text",
-            text: `Error: ${error instanceof Error ? error.message : String(error)}`
+            text: JSON.stringify(structuredError, null, 2)
           }],
+          structuredContent: structuredError,
           isError: true
         };
       }
     });
   }
 
-  async run(): Promise<void> {
-    const transport = new StdioServerTransport();
+  private async parseHttpRequestBody(req: IncomingMessage): Promise<unknown> {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+
+    if (chunks.length === 0) {
+      return undefined;
+    }
+
+    const rawBody = Buffer.concat(chunks).toString("utf8").trim();
+    if (!rawBody) {
+      return undefined;
+    }
+
+    return JSON.parse(rawBody);
+  }
+
+  private getHttpConfig() {
+    return {
+      host: this.config.transport?.http?.host ?? "127.0.0.1",
+      port: this.config.transport?.http?.port ?? 3000,
+      path: this.config.transport?.http?.path ?? "/mcp",
+      statefulSession: this.config.transport?.http?.statefulSession ?? true,
+      enableJsonResponse: this.config.transport?.http?.enableJsonResponse ?? true,
+      allowedOrigins: this.config.transport?.http?.allowedOrigins ?? []
+    };
+  }
+
+  private isAllowedOrigin(req: IncomingMessage): boolean {
+    const { allowedOrigins } = this.getHttpConfig();
+    if (allowedOrigins.length === 0) {
+      return true;
+    }
+
+    const origin = req.headers.origin;
+    if (!origin) {
+      return true;
+    }
+
+    return allowedOrigins.includes(origin);
+  }
+
+  async connectStdio(stdin?: Readable, stdout?: Writable): Promise<void> {
+    const transport = new StdioServerTransport(stdin, stdout);
     await this.server.connect(transport);
     console.error(`${this.config.name} running on stdio`);
   }
+
+  async connectStreamableHttp(): Promise<void> {
+    if (this.streamableHttpRuntime) {
+      return;
+    }
+
+    const httpConfig = this.getHttpConfig();
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: httpConfig.statefulSession ? () => randomUUID() : undefined,
+      enableJsonResponse: httpConfig.enableJsonResponse
+    });
+    await this.server.connect(transport);
+
+    const requestHandler = async (req: IncomingMessage, res: ServerResponse) => {
+      try {
+        const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+        if (url.pathname !== httpConfig.path) {
+          res.statusCode = 404;
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ error: "Not Found" }));
+          return;
+        }
+
+        if (!this.isAllowedOrigin(req)) {
+          res.statusCode = 403;
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ error: "Forbidden origin" }));
+          return;
+        }
+
+        const method = req.method?.toUpperCase() ?? "GET";
+        if (!["POST", "GET", "DELETE"].includes(method)) {
+          res.statusCode = 405;
+          res.setHeader("allow", "POST, GET, DELETE");
+          res.setHeader("content-type", "application/json");
+          res.end(JSON.stringify({ error: "Method Not Allowed" }));
+          return;
+        }
+
+        let parsedBody: unknown;
+        if (method === "POST") {
+          try {
+            parsedBody = await this.parseHttpRequestBody(req);
+          } catch {
+            res.statusCode = 400;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ error: "Invalid JSON body" }));
+            return;
+          }
+        }
+
+        await transport.handleRequest(req, res, parsedBody);
+      } catch (error) {
+        console.error(`Error handling streamable-http request:`, error);
+        if (!res.headersSent) {
+          res.statusCode = 500;
+          res.setHeader("content-type", "application/json");
+          res.end(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              error: {
+                code: -32603,
+                message: "Internal server error"
+              },
+              id: null
+            })
+          );
+        }
+      }
+    };
+
+    const httpServer = createHttpServer((req, res) => {
+      void requestHandler(req, res);
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      httpServer.once("error", reject);
+      httpServer.listen(httpConfig.port, httpConfig.host, () => resolve());
+    });
+
+    this.streamableHttpRuntime = { transport, httpServer };
+    console.error(
+      `${this.config.name} running on streamable-http at http://${httpConfig.host}:${httpConfig.port}${httpConfig.path}`
+    );
+  }
+
+  getStreamableHttpUrl(): string | undefined {
+    if (!this.streamableHttpRuntime) {
+      return undefined;
+    }
+
+    const httpConfig = this.getHttpConfig();
+    const address = this.streamableHttpRuntime.httpServer.address();
+    if (!address || typeof address === "string") {
+      return undefined;
+    }
+
+    const info = address as AddressInfo;
+    return `http://${httpConfig.host}:${info.port}${httpConfig.path}`;
+  }
+
+  async close(): Promise<void> {
+    if (this.streamableHttpRuntime) {
+      await this.streamableHttpRuntime.transport.close();
+      await new Promise<void>((resolve, reject) => {
+        this.streamableHttpRuntime?.httpServer.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolve();
+        });
+      });
+      this.streamableHttpRuntime = undefined;
+    }
+
+    await this.server.close();
+  }
+
+  async run(): Promise<void> {
+    const mode = this.config.transport?.mode ?? "stdio";
+    if (mode === "streamable-http") {
+      await this.connectStreamableHttp();
+      return;
+    }
+
+    await this.connectStdio();
+  }
 }
 
-// Main entry point with enhanced configuration
-async function main() {
-  // Get current file's directory in ES modules
+export function loadEnvironmentVariables(): void {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = dirname(__filename);
-
-  // Enhanced environment loading
   const envPaths = [
-    '.env',
-    'src/.env',
-    path.join(__dirname, '.env'),
-    path.join(process.cwd(), '.env'),
-    path.join(__dirname, '..', '.env'), // Parent directory
+    ".env",
+    "src/.env",
+    path.join(__dirname, ".env"),
+    path.join(process.cwd(), ".env"),
+    path.join(__dirname, "..", ".env")
   ];
 
   let loaded = false;
@@ -1497,41 +2095,88 @@ async function main() {
   }
 
   if (!loaded) {
-    console.error('Warning: No .env file found');
+    console.error("Warning: No .env file found");
   }
+}
 
-  const token = process.env.CANVAS_API_TOKEN;
-  const domain = process.env.CANVAS_DOMAIN;
+export function loadConfigFromEnvironment(env = process.env): MCPServerConfig {
+  const token = env.CANVAS_API_TOKEN;
+  const domain = env.CANVAS_DOMAIN;
 
   if (!token || !domain) {
-    console.error("Missing required environment variables:");
-    console.error("- CANVAS_API_TOKEN: Your Canvas API token");
-    console.error("- CANVAS_DOMAIN: Your Canvas domain (e.g., school.instructure.com)");
-    process.exit(1);
+    throw new Error(
+      "Missing required environment variables: CANVAS_API_TOKEN and CANVAS_DOMAIN are required."
+    );
   }
 
-  const config: MCPServerConfig = {
+  const transportMode = env.MCP_TRANSPORT === "streamable-http" ? "streamable-http" : "stdio";
+  const allowedOrigins = (env.MCP_HTTP_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  return {
     name: "canvas-mcp-server",
-    version: "2.2.3",
+    version: "2.3.0",
     canvas: {
       token,
       domain,
-      maxRetries: parseInt(process.env.CANVAS_MAX_RETRIES || '3'),
-      retryDelay: parseInt(process.env.CANVAS_RETRY_DELAY || '1000'),
-      timeout: parseInt(process.env.CANVAS_TIMEOUT || '30000')
+      maxRetries: parseInt(env.CANVAS_MAX_RETRIES || "3", 10),
+      retryDelay: parseInt(env.CANVAS_RETRY_DELAY || "1000", 10),
+      timeout: parseInt(env.CANVAS_TIMEOUT || "30000", 10)
     },
     logging: {
-      level: (process.env.LOG_LEVEL as any) || 'info'
+      level: (env.LOG_LEVEL as "debug" | "info" | "warn" | "error") || "info"
+    },
+    transport: {
+      mode: transportMode,
+      http: {
+        host: env.MCP_HTTP_HOST || "127.0.0.1",
+        port: parseInt(env.MCP_HTTP_PORT || "3000", 10),
+        path: env.MCP_HTTP_PATH || "/mcp",
+        statefulSession: (env.MCP_HTTP_STATEFUL || "true") !== "false",
+        enableJsonResponse: (env.MCP_HTTP_JSON_RESPONSE || "true") !== "false",
+        allowedOrigins
+      }
     }
   };
+}
 
+export async function main(): Promise<void> {
+  loadEnvironmentVariables();
+
+  let server: CanvasMCPServer | undefined;
   try {
-    const server = new CanvasMCPServer(config);
+    const config = loadConfigFromEnvironment(process.env);
+    server = new CanvasMCPServer(config);
+
+    const shutdown = async (signal: string) => {
+      console.error(`Received ${signal}, shutting down...`);
+      if (server) {
+        await server.close();
+      }
+      process.exit(0);
+    };
+
+    process.on("SIGINT", () => {
+      void shutdown("SIGINT");
+    });
+    process.on("SIGTERM", () => {
+      void shutdown("SIGTERM");
+    });
+
     await server.run();
   } catch (error) {
     console.error("Fatal error:", error);
+    if (server) {
+      await server.close().catch((closeError) => {
+        console.error("Error while closing server:", closeError);
+      });
+    }
     process.exit(1);
   }
 }
 
-main().catch(console.error);
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  void main();
+}
