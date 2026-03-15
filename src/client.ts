@@ -8,23 +8,17 @@ import {
   CanvasUser,
   CanvasEnrollment,
   CanvasAPIError,
-  CanvasDiscussionTopic,
   CanvasModule,
   CanvasModuleItem,
   CanvasQuiz,
   CanvasAnnouncement,
   CanvasUserProfile,
-  CanvasAssignmentSubmission,
   CanvasPage,
   CanvasCalendarEvent,
-  CanvasRubric,
   CanvasAssignmentGroup,
-  CanvasConversation,
   CanvasNotification,
   CanvasFile,
   CanvasSyllabus,
-  CanvasDashboard,
-  SubmitAssignmentArgs,
   FileUploadArgs
 } from './types.js';
 
@@ -306,25 +300,6 @@ export class CanvasClient {
     return response.data;
   }
 
-  // Student submission with file support
-  async submitAssignment(args: SubmitAssignmentArgs): Promise<CanvasAssignmentSubmission> {
-    const { course_id, assignment_id, submission_type, body, url, file_ids } = args;
-    
-    const submissionData: any = {
-      submission_type
-    };
-
-    if (body) submissionData.body = body;
-    if (url) submissionData.url = url;
-    if (file_ids && file_ids.length > 0) submissionData.file_ids = file_ids;
-
-    const response = await this.client.post(
-      `/courses/${course_id}/assignments/${assignment_id}/submissions`,
-      { submission: submissionData }
-    );
-    return response.data;
-  }
-
   // ---------------------
   // FILES
   // ---------------------
@@ -404,26 +379,8 @@ export class CanvasClient {
   }
 
   // ---------------------
-  // RUBRICS
-  // ---------------------
-  async listRubrics(courseId: number): Promise<CanvasRubric[]> {
-    const response = await this.client.get(`/courses/${courseId}/rubrics`);
-    return response.data;
-  }
-
-  async getRubric(courseId: number, rubricId: number): Promise<CanvasRubric> {
-    const response = await this.client.get(`/courses/${courseId}/rubrics/${rubricId}`);
-    return response.data;
-  }
-
-  // ---------------------
   // DASHBOARD
   // ---------------------
-  async getDashboard(): Promise<CanvasDashboard> {
-    const response = await this.client.get('/users/self/dashboard');
-    return response.data;
-  }
-
   async getDashboardCards(): Promise<any[]> {
     const response = await this.client.get('/dashboard/dashboard_cards');
     return response.data;
@@ -442,19 +399,6 @@ export class CanvasClient {
       course_id: courseId,
       syllabus_body: response.data.syllabus_body
     };
-  }
-
-  // ---------------------
-  // CONVERSATIONS/MESSAGING
-  // ---------------------
-  async listConversations(): Promise<CanvasConversation[]> {
-    const response = await this.client.get('/conversations');
-    return response.data;
-  }
-
-  async getConversation(conversationId: number): Promise<CanvasConversation> {
-    const response = await this.client.get(`/conversations/${conversationId}`);
-    return response.data;
   }
 
   // ---------------------
@@ -495,23 +439,11 @@ export class CanvasClient {
     return response.data;
   }
 
-  async getUserGrades(): Promise<any> {
-    const response = await this.client.get('/users/self/grades');
-    return response.data;
-  }
-
   // ---------------------
   // USER PROFILE
   // ---------------------
   async getUserProfile(): Promise<CanvasUserProfile> {
     const response = await this.client.get('/users/self/profile');
-    return response.data;
-  }
-
-  async updateUserProfile(profileData: Partial<CanvasUserProfile>): Promise<CanvasUserProfile> {
-    const response = await this.client.put('/users/self', {
-      user: profileData
-    });
     return response.data;
   }
 
@@ -567,31 +499,6 @@ export class CanvasClient {
     return response.data;
   }
 
-  async markModuleItemComplete(courseId: number, moduleId: number, itemId: number): Promise<void> {
-    await this.client.put(`/courses/${courseId}/modules/${moduleId}/items/${itemId}/done`);
-  }
-
-  // ---------------------
-  // DISCUSSION TOPICS
-  // ---------------------
-  async listDiscussionTopics(courseId: number): Promise<CanvasDiscussionTopic[]> {
-    const response = await this.client.get(`/courses/${courseId}/discussion_topics`, {
-      params: {
-        include: ['assignment']
-      }
-    });
-    return response.data;
-  }
-
-  async getDiscussionTopic(courseId: number, topicId: number): Promise<CanvasDiscussionTopic> {
-    const response = await this.client.get(`/courses/${courseId}/discussion_topics/${topicId}`, {
-      params: {
-        include: ['assignment']
-      }
-    });
-    return response.data;
-  }
-
   // ---------------------
   // ANNOUNCEMENTS
   // ---------------------
@@ -620,17 +527,5 @@ export class CanvasClient {
     return response.data;
   }
 
-  async startQuizAttempt(courseId: number, quizId: number): Promise<any> {
-    const response = await this.client.post(`/courses/${courseId}/quizzes/${quizId}/submissions`);
-    return response.data;
-  }
-
-  async submitQuizAttempt(courseId: number, quizId: number, submissionId: number, answers: any): Promise<any> {
-    const response = await this.client.post(
-      `/courses/${courseId}/quizzes/${quizId}/submissions/${submissionId}/complete`,
-      { quiz_submissions: [{ attempt: 1, questions: answers }] }
-    );
-    return response.data;
-  }
 
 }

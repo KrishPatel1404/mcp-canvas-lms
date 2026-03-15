@@ -16,7 +16,6 @@ import { CanvasClient } from "./client.js";
 import * as dotenv from "dotenv";
 import {
   CanvasCourse,
-  SubmitAssignmentArgs,
   MCPServerConfig,
   CanvasAPIError
 } from "./types.js";
@@ -117,30 +116,6 @@ const RAW_TOOLS: Tool[] = [
       required: ["course_id", "assignment_id"]
     }
   },
-  {
-    name: "canvas_submit_assignment",
-    description: "Submit work for an assignment",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course" },
-        assignment_id: { type: "number", description: "ID of the assignment" },
-        submission_type: { 
-          type: "string", 
-          enum: ["online_text_entry", "online_url", "online_upload"],
-          description: "Type of submission" 
-        },
-        body: { type: "string", description: "Text content for text submissions" },
-        url: { type: "string", description: "URL for URL submissions" },
-        file_ids: { 
-          type: "array", 
-          items: { type: "number" },
-          description: "File IDs for file submissions" 
-        }
-      },
-      required: ["course_id", "assignment_id", "submission_type"]
-    }
-  },
   // Files and uploads
   {
     name: "canvas_list_files",
@@ -229,15 +204,6 @@ const RAW_TOOLS: Tool[] = [
 
   // Dashboard
   {
-    name: "canvas_get_dashboard",
-    description: "Get user's dashboard information",
-    inputSchema: {
-      type: "object",
-      properties: {},
-      required: []
-    }
-  },
-  {
     name: "canvas_get_dashboard_cards",
     description: "Get dashboard course cards",
     inputSchema: {
@@ -259,15 +225,6 @@ const RAW_TOOLS: Tool[] = [
       required: ["course_id"]
     }
   },
-  {
-    name: "canvas_get_user_grades",
-    description: "Get all grades for the current user",
-    inputSchema: {
-      type: "object",
-      properties: {},
-      required: []
-    }
-  },
 
   // User management
   {
@@ -276,21 +233,6 @@ const RAW_TOOLS: Tool[] = [
     inputSchema: {
       type: "object",
       properties: {},
-      required: []
-    }
-  },
-  {
-    name: "canvas_update_user_profile",
-    description: "Update current user's profile",
-    inputSchema: {
-      type: "object",
-      properties: {
-        name: { type: "string", description: "User's name" },
-        short_name: { type: "string", description: "User's short name" },
-        bio: { type: "string", description: "User's bio" },
-        title: { type: "string", description: "User's title" },
-        time_zone: { type: "string", description: "User's time zone" }
-      },
       required: []
     }
   },
@@ -343,44 +285,7 @@ const RAW_TOOLS: Tool[] = [
       required: ["course_id", "module_id", "item_id"]
     }
   },
-  {
-    name: "canvas_mark_module_item_complete",
-    description: "Mark a module item as complete",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course" },
-        module_id: { type: "number", description: "ID of the module" },
-        item_id: { type: "number", description: "ID of the module item" }
-      },
-      required: ["course_id", "module_id", "item_id"]
-    }
-  },
 
-  // Discussions
-  {
-    name: "canvas_list_discussion_topics",
-    description: "List all discussion topics in a course",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course" }
-      },
-      required: ["course_id"]
-    }
-  },
-  {
-    name: "canvas_get_discussion_topic",
-    description: "Get details of a specific discussion topic",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course" },
-        topic_id: { type: "number", description: "ID of the discussion topic" }
-      },
-      required: ["course_id", "topic_id"]
-    }
-  },
   // Announcements
   {
     name: "canvas_list_announcements",
@@ -418,65 +323,7 @@ const RAW_TOOLS: Tool[] = [
       required: ["course_id", "quiz_id"]
     }
   },
-  {
-    name: "canvas_start_quiz_attempt",
-    description: "Start a new quiz attempt",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course" },
-        quiz_id: { type: "number", description: "ID of the quiz" }
-      },
-      required: ["course_id", "quiz_id"]
-    }
-  },
 
-  // Rubrics
-  {
-    name: "canvas_list_rubrics",
-    description: "List rubrics for a course",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course" }
-      },
-      required: ["course_id"]
-    }
-  },
-  {
-    name: "canvas_get_rubric",
-    description: "Get details of a specific rubric",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course" },
-        rubric_id: { type: "number", description: "ID of the rubric" }
-      },
-      required: ["course_id", "rubric_id"]
-    }
-  },
-
-  // Conversations
-  {
-    name: "canvas_list_conversations",
-    description: "List user's conversations",
-    inputSchema: {
-      type: "object",
-      properties: {},
-      required: []
-    }
-  },
-  {
-    name: "canvas_get_conversation",
-    description: "Get details of a specific conversation",
-    inputSchema: {
-      type: "object",
-      properties: {
-        conversation_id: { type: "number", description: "ID of the conversation" }
-      },
-      required: ["conversation_id"]
-    }
-  },
   // Notifications
   {
     name: "canvas_list_notifications",
@@ -518,12 +365,7 @@ type StreamableHttpRuntime = {
 };
 
 const READ_ONLY_TOOL_PREFIXES = ["canvas_list_", "canvas_get_", "canvas_health_check"] as const;
-const MUTATING_TOOL_PREFIXES = [
-  "canvas_update_",
-  "canvas_submit_",
-  "canvas_mark_",
-  "canvas_start_"
-] as const;
+const MUTATING_TOOL_PREFIXES: readonly string[] = [];
 
 function toCommaList(values: string[]): string {
   if (values.length === 0) {
@@ -803,12 +645,6 @@ export class CanvasMCPServer {
               mimeType: "application/json"
             })),
             ...courses.map((course: CanvasCourse) => ({
-              uri: `discussions://${course.id}`,
-              name: `Discussions: ${course.name}`,
-              description: `Discussion topics for ${course.name}`,
-              mimeType: "application/json"
-            })),
-            ...courses.map((course: CanvasCourse) => ({
               uri: `announcements://${course.id}`,
               name: `Announcements: ${course.name}`,
               description: `Announcements for ${course.name}`,
@@ -832,12 +668,6 @@ export class CanvasMCPServer {
               description: `Files for ${course.name}`,
               mimeType: "application/json"
             })),
-            {
-              uri: "dashboard://user",
-              name: "User Dashboard",
-              description: "User's Canvas dashboard information",
-              mimeType: "application/json"
-            },
             {
               uri: "profile://user",
               name: "User Profile",
@@ -889,10 +719,6 @@ export class CanvasMCPServer {
             content = await this.client.listModules(parseInt(id));
             break;
 
-          case "discussions":
-            content = await this.client.listDiscussionTopics(parseInt(id));
-            break;
-
           case "announcements":
             content = await this.client.listAnnouncements(id);
             break;
@@ -907,12 +733,6 @@ export class CanvasMCPServer {
 
           case "files":
             content = await this.client.listFiles(parseInt(id));
-            break;
-
-          case "dashboard":
-            if (id === "user") {
-              content = await this.client.getDashboard();
-            }
             break;
 
           case "profile":
@@ -1050,20 +870,6 @@ export class CanvasMCPServer {
             };
           }
 
-          case "canvas_submit_assignment": {
-            const submitArgs = args as unknown as SubmitAssignmentArgs;
-            const { course_id, assignment_id, submission_type } = submitArgs;
-
-            if (!course_id || !assignment_id || !submission_type) {
-              throw new Error("Missing required fields: course_id, assignment_id, and submission_type");
-            }
-
-            const submission = await this.client.submitAssignment(submitArgs);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(submission, includeRaw) }]
-            };
-          }
-          
           // Files
           case "canvas_list_files": {
             const { course_id, folder_id } = args as { course_id: number; folder_id?: number };
@@ -1136,13 +942,6 @@ export class CanvasMCPServer {
           }
 
           // Dashboard
-          case "canvas_get_dashboard": {
-            const dashboard = await this.client.getDashboard();
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(dashboard, includeRaw) }]
-            };
-          }
-
           case "canvas_get_dashboard_cards": {
             const cards = await this.client.getDashboardCards();
             return {
@@ -1158,27 +957,12 @@ export class CanvasMCPServer {
             };
           }
 
-          case "canvas_update_user_profile": {
-            const profileData = args as Partial<{ name: string; short_name: string; bio: string; title: string; time_zone: string }>;
-            const updatedProfile = await this.client.updateUserProfile(profileData);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(updatedProfile, includeRaw) }]
-            };
-          }
-
           // Grades
           case "canvas_get_course_grades": {
             const { course_id } = args as { course_id: number };
             if (!course_id) throw new Error("Missing required field: course_id");
             
             const grades = await this.client.getCourseGrades(course_id);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(grades, includeRaw) }]
-            };
-          }
-
-          case "canvas_get_user_grades": {
-            const grades = await this.client.getUserGrades();
             return {
               content: [{ type: "text", text: this.serializeToolOutput(grades, includeRaw) }]
             };
@@ -1231,41 +1015,7 @@ export class CanvasMCPServer {
             };
           }
 
-          case "canvas_mark_module_item_complete": {
-            const { course_id, module_id, item_id } = args as { course_id: number; module_id: number; item_id: number };
-            if (!course_id || !module_id || !item_id) {
-              throw new Error("Missing required fields: course_id, module_id, and item_id");
-            }
-
-            await this.client.markModuleItemComplete(course_id, module_id, item_id);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput({ status: "ok" }, includeRaw) }]
-            };
-          }
-
-          // Discussions and announcements
-          case "canvas_list_discussion_topics": {
-            const { course_id } = args as { course_id: number };
-            if (!course_id) throw new Error("Missing required field: course_id");
-
-            const topics = await this.client.listDiscussionTopics(course_id);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(topics, includeRaw) }]
-            };
-          }
-
-          case "canvas_get_discussion_topic": {
-            const { course_id, topic_id } = args as { course_id: number; topic_id: number };
-            if (!course_id || !topic_id) {
-              throw new Error("Missing required fields: course_id and topic_id");
-            }
-
-            const topic = await this.client.getDiscussionTopic(course_id, topic_id);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(topic, includeRaw) }]
-            };
-          }
-
+          // Announcements
           case "canvas_list_announcements": {
             const { course_id } = args as { course_id: number };
             if (!course_id) throw new Error("Missing required field: course_id");
@@ -1299,59 +1049,7 @@ export class CanvasMCPServer {
             };
           }
 
-          case "canvas_start_quiz_attempt": {
-            const { course_id, quiz_id } = args as { course_id: number; quiz_id: number };
-            if (!course_id || !quiz_id) {
-              throw new Error("Missing required fields: course_id and quiz_id");
-            }
-
-            const quizAttempt = await this.client.startQuizAttempt(course_id, quiz_id);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(quizAttempt, includeRaw) }]
-            };
-          }
-
-          // Rubrics
-          case "canvas_list_rubrics": {
-            const { course_id } = args as { course_id: number };
-            if (!course_id) throw new Error("Missing required field: course_id");
-
-            const rubrics = await this.client.listRubrics(course_id);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(rubrics, includeRaw) }]
-            };
-          }
-
-          case "canvas_get_rubric": {
-            const { course_id, rubric_id } = args as { course_id: number; rubric_id: number };
-            if (!course_id || !rubric_id) {
-              throw new Error("Missing required fields: course_id and rubric_id");
-            }
-
-            const rubric = await this.client.getRubric(course_id, rubric_id);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(rubric, includeRaw) }]
-            };
-          }
-
-          // Conversations and notifications
-          case "canvas_list_conversations": {
-            const conversations = await this.client.listConversations();
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(conversations, includeRaw) }]
-            };
-          }
-
-          case "canvas_get_conversation": {
-            const { conversation_id } = args as { conversation_id: number };
-            if (!conversation_id) throw new Error("Missing required field: conversation_id");
-
-            const conversation = await this.client.getConversation(conversation_id);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(conversation, includeRaw) }]
-            };
-          }
-
+          // Notifications
           case "canvas_list_notifications": {
             const notifications = await this.client.listNotifications();
             return {
@@ -1609,7 +1307,7 @@ export function loadConfigFromEnvironment(env = process.env): MCPServerConfig {
 
   return {
     name: "canvas-mcp-server",
-    version: "2.3.0",
+    version: "2.4.0",
     canvas: {
       token,
       domain,

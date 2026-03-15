@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-03-15
+
+### Changed
+- **Read-only server**: Removed all state-mutating tools. The server is now entirely read-only and safe to connect to any Canvas student account.
+
+### Removed
+- `canvas_submit_assignment` — assignment submission
+- `canvas_get_dashboard` — dashboard info (endpoint unreliable across Canvas instances)
+- `canvas_get_user_grades` — all-user grades endpoint (replaced by `canvas_get_course_grades`)
+- `canvas_update_user_profile` — profile mutation
+- `canvas_mark_module_item_complete` — module item completion mutation
+- `canvas_list_discussion_topics` — discussion topic listing
+- `canvas_get_discussion_topic` — discussion topic detail
+- `canvas_start_quiz_attempt` — quiz attempt mutation
+- `canvas_list_rubrics` — rubric listing (instructor-only endpoint)
+- `canvas_get_rubric` — rubric detail (instructor-only endpoint)
+- `canvas_list_conversations` — conversation/messaging listing
+- `canvas_get_conversation` — conversation detail
+
+### Technical
+- Removed `MUTATING_TOOL_PREFIXES` entries (`canvas_update_`, `canvas_submit_`, `canvas_mark_`, `canvas_start_`) — no mutating tools remain
+- Removed corresponding `CanvasClient` methods and orphaned `submitQuizAttempt` method
+- Removed unused types: `CanvasDashboard`, `CanvasDiscussionTopic`, `CanvasConversation`, `SubmitAssignmentArgs`
+- 26 read-only tools remain
+
 ## [2.2.3] - 2025-06-27
 
 ### Fixed
