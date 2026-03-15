@@ -7,12 +7,6 @@ import {
   CanvasSubmission,
   CanvasUser,
   CanvasEnrollment,
-  CreateCourseArgs,
-  UpdateCourseArgs,
-  CreateAssignmentArgs,
-  UpdateAssignmentArgs,
-  SubmitGradeArgs,
-  EnrollUserArgs,
   CanvasAPIError,
   CanvasDiscussionTopic,
   CanvasModule,
@@ -20,7 +14,6 @@ import {
   CanvasQuiz,
   CanvasAnnouncement,
   CanvasUserProfile,
-  CanvasScope,
   CanvasAssignmentSubmission,
   CanvasPage,
   CanvasCalendarEvent,
@@ -32,13 +25,7 @@ import {
   CanvasSyllabus,
   CanvasDashboard,
   SubmitAssignmentArgs,
-  FileUploadArgs,
-  CanvasAccount,
-  CreateUserArgs,
-  CanvasAccountReport,
-  CreateReportArgs,
-  ListAccountCoursesArgs,
-  ListAccountUsersArgs
+  FileUploadArgs
 } from './types.js';
 
 export class CanvasClient {
@@ -207,7 +194,7 @@ export class CanvasClient {
   }
 
   // ---------------------
-  // COURSES (Enhanced)
+  // COURSES
   // ---------------------
   async listCourses(includeEnded: boolean = false): Promise<CanvasCourse[]> {
     const params: any = {
@@ -231,28 +218,8 @@ export class CanvasClient {
     return response.data;
   }
 
-  async createCourse(args: CreateCourseArgs): Promise<CanvasCourse> {
-    const { account_id, ...courseData } = args;
-    const response = await this.client.post(`/accounts/${account_id}/courses`, {
-      course: courseData
-    });
-    return response.data;
-  }
-
-  async updateCourse(args: UpdateCourseArgs): Promise<CanvasCourse> {
-    const { course_id, ...courseData } = args;
-    const response = await this.client.put(`/courses/${course_id}`, {
-      course: courseData
-    });
-    return response.data;
-  }
-
-  async deleteCourse(courseId: number): Promise<void> {
-    await this.client.delete(`/courses/${courseId}`);
-  }
-
   // ---------------------
-  // ASSIGNMENTS (Enhanced)
+  // ASSIGNMENTS
   // ---------------------
   async listAssignments(courseId: number, includeSubmissions: boolean = false): Promise<CanvasAssignment[]> {
     const params: any = {
@@ -280,27 +247,6 @@ export class CanvasClient {
     return response.data;
   }
 
-  async createAssignment(args: CreateAssignmentArgs): Promise<CanvasAssignment> {
-    const { course_id, ...assignmentData } = args;
-    const response = await this.client.post(`/courses/${course_id}/assignments`, {
-      assignment: assignmentData
-    });
-    return response.data;
-  }
-
-  async updateAssignment(args: UpdateAssignmentArgs): Promise<CanvasAssignment> {
-    const { course_id, assignment_id, ...assignmentData } = args;
-    const response = await this.client.put(
-      `/courses/${course_id}/assignments/${assignment_id}`,
-      { assignment: assignmentData }
-    );
-    return response.data;
-  }
-
-  async deleteAssignment(courseId: number, assignmentId: number): Promise<void> {
-    await this.client.delete(`/courses/${courseId}/assignments/${assignmentId}`);
-  }
-
   // ---------------------
   // ASSIGNMENT GROUPS
   // ---------------------
@@ -323,7 +269,7 @@ export class CanvasClient {
   }
 
   // ---------------------
-  // SUBMISSIONS (Enhanced for Students)
+  // SUBMISSIONS
   // ---------------------
   async getSubmissions(courseId: number, assignmentId: number): Promise<CanvasSubmission[]> {
     const response = await this.client.get(
@@ -349,18 +295,6 @@ export class CanvasClient {
     return response.data;
   }
 
-  async submitGrade(args: SubmitGradeArgs): Promise<CanvasSubmission> {
-    const { course_id, assignment_id, user_id, grade, comment } = args;
-    const response = await this.client.put(
-      `/courses/${course_id}/assignments/${assignment_id}/submissions/${user_id}`, {
-      submission: {
-        posted_grade: grade,
-        comment: comment ? { text_comment: comment } : undefined
-      }
-    });
-    return response.data;
-  }
-
   // Student submission with file support
   async submitAssignment(args: SubmitAssignmentArgs): Promise<CanvasAssignmentSubmission> {
     const { course_id, assignment_id, submission_type, body, url, file_ids } = args;
@@ -381,7 +315,7 @@ export class CanvasClient {
   }
 
   // ---------------------
-  // FILES (Enhanced)
+  // FILES
   // ---------------------
   async listFiles(courseId: number, folderId?: number): Promise<CanvasFile[]> {
     const endpoint = folderId 
@@ -512,15 +446,6 @@ export class CanvasClient {
     return response.data;
   }
 
-  async createConversation(recipients: string[], body: string, subject?: string): Promise<CanvasConversation> {
-    const response = await this.client.post('/conversations', {
-      recipients,
-      body,
-      subject
-    });
-    return response.data;
-  }
-
   // ---------------------
   // NOTIFICATIONS
   // ---------------------
@@ -530,7 +455,7 @@ export class CanvasClient {
   }
 
   // ---------------------
-  // USERS AND ENROLLMENTS (Enhanced)
+  // USERS AND ENROLLMENTS
   // ---------------------
   async listUsers(courseId: number): Promise<CanvasUser[]> {
     const response = await this.client.get(`/courses/${courseId}/users`, {
@@ -546,24 +471,8 @@ export class CanvasClient {
     return response.data;
   }
 
-  async enrollUser(args: EnrollUserArgs): Promise<CanvasEnrollment> {
-    const { course_id, user_id, role = 'StudentEnrollment', enrollment_state = 'active' } = args;
-    const response = await this.client.post(`/courses/${course_id}/enrollments`, {
-      enrollment: {
-        user_id,
-        type: role,
-        enrollment_state
-      }
-    });
-    return response.data;
-  }
-
-  async unenrollUser(courseId: number, enrollmentId: number): Promise<void> {
-    await this.client.delete(`/courses/${courseId}/enrollments/${enrollmentId}`);
-  }
-
   // ---------------------
-  // GRADES (Enhanced)
+  // GRADES
   // ---------------------
   async getCourseGrades(courseId: number): Promise<CanvasEnrollment[]> {
     const response = await this.client.get(`/courses/${courseId}/enrollments`, {
@@ -580,7 +489,7 @@ export class CanvasClient {
   }
 
   // ---------------------
-  // USER PROFILE (Enhanced)
+  // USER PROFILE
   // ---------------------
   async getUserProfile(): Promise<CanvasUserProfile> {
     const response = await this.client.get('/users/self/profile');
@@ -595,7 +504,7 @@ export class CanvasClient {
   }
 
   // ---------------------
-  // STUDENT COURSES (Enhanced)
+  // STUDENT COURSES
   // ---------------------
   async listStudentCourses(): Promise<CanvasCourse[]> {
     const response = await this.client.get('/courses', {
@@ -608,7 +517,7 @@ export class CanvasClient {
   }
 
   // ---------------------
-  // MODULES (Enhanced)
+  // MODULES
   // ---------------------
   async listModules(courseId: number): Promise<CanvasModule[]> {
     const response = await this.client.get(`/courses/${courseId}/modules`, {
@@ -651,7 +560,7 @@ export class CanvasClient {
   }
 
   // ---------------------
-  // DISCUSSION TOPICS (Enhanced)
+  // DISCUSSION TOPICS
   // ---------------------
   async listDiscussionTopics(courseId: number): Promise<CanvasDiscussionTopic[]> {
     const response = await this.client.get(`/courses/${courseId}/discussion_topics`, {
@@ -671,15 +580,8 @@ export class CanvasClient {
     return response.data;
   }
 
-  async postToDiscussion(courseId: number, topicId: number, message: string): Promise<any> {
-    const response = await this.client.post(`/courses/${courseId}/discussion_topics/${topicId}/entries`, {
-      message
-    });
-    return response.data;
-  }
-
   // ---------------------
-  // ANNOUNCEMENTS (Enhanced)
+  // ANNOUNCEMENTS
   // ---------------------
   async listAnnouncements(courseId: string): Promise<CanvasAnnouncement[]> {
     const response = await this.client.get(`/courses/${courseId}/discussion_topics`, {
@@ -692,7 +594,7 @@ export class CanvasClient {
   }
 
   // ---------------------
-  // QUIZZES (Enhanced)
+  // QUIZZES
   // ---------------------
   async listQuizzes(courseId: string): Promise<CanvasQuiz[]> {
     const response = await this.client.get(`/courses/${courseId}/quizzes`);
@@ -702,24 +604,6 @@ export class CanvasClient {
   async getQuiz(courseId: string, quizId: number): Promise<CanvasQuiz> {
     const response = await this.client.get(`/courses/${courseId}/quizzes/${quizId}`);
     return response.data;
-  }
-
-  async createQuiz(courseId: number, quizData: Partial<CanvasQuiz>): Promise<CanvasQuiz> {
-    const response = await this.client.post(`/courses/${courseId}/quizzes`, {
-      quiz: quizData
-    });
-    return response.data;
-  }
-
-  async updateQuiz(courseId: number, quizId: number, quizData: Partial<CanvasQuiz>): Promise<CanvasQuiz> {
-    const response = await this.client.put(`/courses/${courseId}/quizzes/${quizId}`, {
-      quiz: quizData
-    });
-    return response.data;
-  }
-
-  async deleteQuiz(courseId: number, quizId: number): Promise<void> {
-    await this.client.delete(`/courses/${courseId}/quizzes/${quizId}`);
   }
 
   async startQuizAttempt(courseId: number, quizId: number): Promise<any> {
@@ -735,68 +619,4 @@ export class CanvasClient {
     return response.data;
   }
 
-  // ---------------------
-  // SCOPES (Enhanced)
-  // ---------------------
-  async listTokenScopes(accountId: number, groupBy?: string): Promise<CanvasScope[]> {
-    const params: Record<string, string> = {};
-    if (groupBy) {
-      params.group_by = groupBy;
-    }
-
-    const response = await this.client.get(`/accounts/${accountId}/scopes`, { params });
-    return response.data;
-  }
-
-  // ---------------------
-  // ACCOUNT MANAGEMENT (New)
-  // ---------------------
-  async getAccount(accountId: number): Promise<CanvasAccount> {
-    const response = await this.client.get(`/accounts/${accountId}`);
-    return response.data;
-  }
-
-  async listAccountCourses(args: ListAccountCoursesArgs): Promise<CanvasCourse[]> {
-    const { account_id, ...params } = args;
-    const response = await this.client.get(`/accounts/${account_id}/courses`, { params });
-    return response.data;
-  }
-
-  async listAccountUsers(args: ListAccountUsersArgs): Promise<CanvasUser[]> {
-    const { account_id, ...params } = args;
-    const response = await this.client.get(`/accounts/${account_id}/users`, { params });
-    return response.data;
-  }
-
-  async createUser(args: CreateUserArgs): Promise<CanvasUser> {
-    const { account_id, ...userData } = args;
-    const response = await this.client.post(`/accounts/${account_id}/users`, userData);
-    return response.data;
-  }
-
-  async listSubAccounts(accountId: number): Promise<CanvasAccount[]> {
-    const response = await this.client.get(`/accounts/${accountId}/sub_accounts`);
-    return response.data;
-  }
-
-  // ---------------------
-  // ACCOUNT REPORTS (New)
-  // ---------------------
-  async getAccountReports(accountId: number): Promise<any[]> {
-    const response = await this.client.get(`/accounts/${accountId}/reports`);
-    return response.data;
-  }
-
-  async createAccountReport(args: CreateReportArgs): Promise<CanvasAccountReport> {
-    const { account_id, report, parameters } = args;
-    const response = await this.client.post(`/accounts/${account_id}/reports/${report}`, {
-      parameters: parameters || {}
-    });
-    return response.data;
-  }
-
-  async getAccountReport(accountId: number, reportType: string, reportId: number): Promise<CanvasAccountReport> {
-    const response = await this.client.get(`/accounts/${accountId}/reports/${reportType}/${reportId}`);
-    return response.data;
-  }
 }

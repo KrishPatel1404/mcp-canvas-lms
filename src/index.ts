@@ -15,21 +15,9 @@ import {
 import { CanvasClient } from "./client.js";
 import * as dotenv from "dotenv";
 import {
-  CreateCourseArgs,
-  UpdateCourseArgs,
-  CreateAssignmentArgs,
-  UpdateAssignmentArgs,
-  SubmitGradeArgs,
-  EnrollUserArgs,
   CanvasCourse,
-  CanvasAssignmentSubmission,
   SubmitAssignmentArgs,
-  FileUploadArgs,
   MCPServerConfig,
-  CreateUserArgs,
-  ListAccountCoursesArgs,
-  ListAccountUsersArgs,
-  CreateReportArgs,
   CanvasAPIError
 } from "./types.js";
 import { createServer as createHttpServer, type IncomingMessage, type Server as HttpServer, type ServerResponse } from "node:http";
@@ -40,7 +28,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 
-// Enhanced tools list with all student-focused endpoints
+// Student-only tools (instructor/admin tools have been removed)
 const RAW_TOOLS: Tool[] = [
   // Health and system tools
   {
@@ -76,72 +64,6 @@ const RAW_TOOLS: Tool[] = [
       required: ["course_id"]
     }
   },
-  {
-    name: "canvas_create_course",
-    description: "Create a new course in Canvas",
-    inputSchema: {
-      type: "object",
-      properties: {
-        account_id: { type: "number", description: "ID of the account to create the course in" },
-        name: { type: "string", description: "Name of the course" },
-        course_code: { type: "string", description: "Course code (e.g., CS101)" },
-        start_at: { type: "string", description: "Course start date (ISO format)" },
-        end_at: { type: "string", description: "Course end date (ISO format)" },
-        license: { type: "string", description: "Course license" },
-        is_public: { type: "boolean", description: "Whether the course is public" },
-        is_public_to_auth_users: { type: "boolean", description: "Whether the course is public to authenticated users" },
-        public_syllabus: { type: "boolean", description: "Whether the syllabus is public" },
-        public_syllabus_to_auth: { type: "boolean", description: "Whether the syllabus is public to authenticated users" },
-        public_description: { type: "string", description: "Public description of the course" },
-        allow_student_wiki_edits: { type: "boolean", description: "Whether students can edit the wiki" },
-        allow_wiki_comments: { type: "boolean", description: "Whether wiki comments are allowed" },
-        allow_student_forum_attachments: { type: "boolean", description: "Whether students can add forum attachments" },
-        open_enrollment: { type: "boolean", description: "Whether the course has open enrollment" },
-        self_enrollment: { type: "boolean", description: "Whether the course allows self enrollment" },
-        restrict_enrollments_to_course_dates: { type: "boolean", description: "Whether to restrict enrollments to course start/end dates" },
-        term_id: { type: "number", description: "ID of the enrollment term" },
-        sis_course_id: { type: "string", description: "SIS course ID" },
-        integration_id: { type: "string", description: "Integration ID for the course" },
-        hide_final_grades: { type: "boolean", description: "Whether to hide final grades" },
-        apply_assignment_group_weights: { type: "boolean", description: "Whether to apply assignment group weights" },
-        time_zone: { type: "string", description: "Course time zone" },
-        syllabus_body: { type: "string", description: "Course syllabus content" }
-      },
-      required: ["account_id", "name"]
-    }
-  },
-  {
-    name: "canvas_update_course",
-    description: "Update an existing course in Canvas",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course to update" },
-        name: { type: "string", description: "New name for the course" },
-        course_code: { type: "string", description: "New course code" },
-        start_at: { type: "string", description: "New start date (ISO format)" },
-        end_at: { type: "string", description: "New end date (ISO format)" },
-        license: { type: "string", description: "Course license" },
-        is_public: { type: "boolean", description: "Whether the course is public" },
-        is_public_to_auth_users: { type: "boolean", description: "Whether the course is public to authenticated users" },
-        public_syllabus: { type: "boolean", description: "Whether the syllabus is public" },
-        public_syllabus_to_auth: { type: "boolean", description: "Whether the syllabus is public to authenticated users" },
-        public_description: { type: "string", description: "Public description of the course" },
-        allow_student_wiki_edits: { type: "boolean", description: "Whether students can edit the wiki" },
-        allow_wiki_comments: { type: "boolean", description: "Whether wiki comments are allowed" },
-        allow_student_forum_attachments: { type: "boolean", description: "Whether students can add forum attachments" },
-        open_enrollment: { type: "boolean", description: "Whether the course has open enrollment" },
-        self_enrollment: { type: "boolean", description: "Whether the course allows self enrollment" },
-        restrict_enrollments_to_course_dates: { type: "boolean", description: "Whether to restrict enrollments to course start/end dates" },
-        hide_final_grades: { type: "boolean", description: "Whether to hide final grades" },
-        apply_assignment_group_weights: { type: "boolean", description: "Whether to apply assignment group weights" },
-        time_zone: { type: "string", description: "Course time zone" },
-        syllabus_body: { type: "string", description: "Updated syllabus content" }
-      },
-      required: ["course_id"]
-    }
-  },
-
   // Assignment management
   {
     name: "canvas_list_assignments",
@@ -168,50 +90,6 @@ const RAW_TOOLS: Tool[] = [
       required: ["course_id", "assignment_id"]
     }
   },
-  {
-    name: "canvas_create_assignment",
-    description: "Create a new assignment in a Canvas course",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course" },
-        name: { type: "string", description: "Name of the assignment" },
-        description: { type: "string", description: "Assignment description/instructions" },
-        due_at: { type: "string", description: "Due date (ISO format)" },
-        points_possible: { type: "number", description: "Maximum points possible" },
-        submission_types: { 
-          type: "array", 
-          items: { type: "string" },
-          description: "Allowed submission types"
-        },
-        allowed_extensions: {
-          type: "array",
-          items: { type: "string" },
-          description: "Allowed file extensions for submissions"
-        },
-        published: { type: "boolean", description: "Whether the assignment is published" }
-      },
-      required: ["course_id", "name"]
-    }
-  },
-  {
-    name: "canvas_update_assignment",
-    description: "Update an existing assignment",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course" },
-        assignment_id: { type: "number", description: "ID of the assignment to update" },
-        name: { type: "string", description: "New name for the assignment" },
-        description: { type: "string", description: "New assignment description" },
-        due_at: { type: "string", description: "New due date (ISO format)" },
-        points_possible: { type: "number", description: "New maximum points" },
-        published: { type: "boolean", description: "Whether the assignment is published" }
-      },
-      required: ["course_id", "assignment_id"]
-    }
-  },
-
   // Assignment groups
   {
     name: "canvas_list_assignment_groups",
@@ -263,28 +141,6 @@ const RAW_TOOLS: Tool[] = [
       required: ["course_id", "assignment_id", "submission_type"]
     }
   },
-  {
-    name: "canvas_submit_grade",
-    description: "Submit a grade for a student's assignment (teacher only)",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course" },
-        assignment_id: { type: "number", description: "ID of the assignment" },
-        user_id: { type: "number", description: "ID of the student" },
-        grade: { 
-          oneOf: [
-            { type: "number" },
-            { type: "string" }
-          ],
-          description: "Grade to submit (number or letter grade)"
-        },
-        comment: { type: "string", description: "Optional comment on the submission" }
-      },
-      required: ["course_id", "assignment_id", "user_id", "grade"]
-    }
-  },
-
   // Files and uploads
   {
     name: "canvas_list_files",
@@ -438,27 +294,6 @@ const RAW_TOOLS: Tool[] = [
       required: []
     }
   },
-  {
-    name: "canvas_enroll_user",
-    description: "Enroll a user in a course",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course" },
-        user_id: { type: "number", description: "ID of the user to enroll" },
-        role: { 
-          type: "string", 
-          description: "Role for the enrollment (StudentEnrollment, TeacherEnrollment, etc.)" 
-        },
-        enrollment_state: { 
-          type: "string",
-          description: "State of the enrollment (active, invited, etc.)"
-        }
-      },
-      required: ["course_id", "user_id"]
-    }
-  },
-
   // Modules
   {
     name: "canvas_list_modules",
@@ -546,20 +381,6 @@ const RAW_TOOLS: Tool[] = [
       required: ["course_id", "topic_id"]
     }
   },
-  {
-    name: "canvas_post_to_discussion",
-    description: "Post a message to a discussion topic",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course" },
-        topic_id: { type: "number", description: "ID of the discussion topic" },
-        message: { type: "string", description: "Message content" }
-      },
-      required: ["course_id", "topic_id", "message"]
-    }
-  },
-
   // Announcements
   {
     name: "canvas_list_announcements",
@@ -595,23 +416,6 @@ const RAW_TOOLS: Tool[] = [
         quiz_id: { type: "number", description: "ID of the quiz" }
       },
       required: ["course_id", "quiz_id"]
-    }
-  },
-  {
-    name: "canvas_create_quiz",
-    description: "Create a new quiz in a course",
-    inputSchema: {
-      type: "object",
-      properties: {
-        course_id: { type: "number", description: "ID of the course" },
-        title: { type: "string", description: "Title of the quiz" },
-        quiz_type: { type: "string", description: "Type of the quiz (e.g., graded)" },
-        time_limit: { type: "number", description: "Time limit in minutes" },
-        published: { type: "boolean", description: "Is the quiz published" },
-        description: { type: "string", description: "Description of the quiz" },
-        due_at: { type: "string", description: "Due date (ISO format)" }
-      },
-      required: ["course_id", "title"]
     }
   },
   {
@@ -673,24 +477,6 @@ const RAW_TOOLS: Tool[] = [
       required: ["conversation_id"]
     }
   },
-  {
-    name: "canvas_create_conversation",
-    description: "Create a new conversation",
-    inputSchema: {
-      type: "object",
-      properties: {
-        recipients: { 
-          type: "array", 
-          items: { type: "string" },
-          description: "Recipient user IDs or email addresses" 
-        },
-        body: { type: "string", description: "Message body" },
-        subject: { type: "string", description: "Message subject" }
-      },
-      required: ["recipients", "body"]
-    }
-  },
-
   // Notifications
   {
     name: "canvas_list_notifications",
@@ -715,115 +501,6 @@ const RAW_TOOLS: Tool[] = [
     }
   },
 
-  // Account Management
-  {
-    name: "canvas_get_account",
-    description: "Get account details",
-    inputSchema: {
-      type: "object",
-      properties: {
-        account_id: { type: "number", description: "ID of the account" }
-      },
-      required: ["account_id"]
-    }
-  },
-  {
-    name: "canvas_list_account_courses",
-    description: "List courses for an account",
-    inputSchema: {
-      type: "object",
-      properties: {
-        account_id: { type: "number", description: "ID of the account" },
-        with_enrollments: { type: "boolean", description: "Include enrollment data" },
-        published: { type: "boolean", description: "Only include published courses" },
-        completed: { type: "boolean", description: "Include completed courses" },
-        search_term: { type: "string", description: "Search term to filter courses" },
-        sort: { type: "string", enum: ["course_name", "sis_course_id", "teacher", "account_name"], description: "Sort order" },
-        order: { type: "string", enum: ["asc", "desc"], description: "Sort direction" }
-      },
-      required: ["account_id"]
-    }
-  },
-  {
-    name: "canvas_list_account_users",
-    description: "List users for an account",
-    inputSchema: {
-      type: "object",
-      properties: {
-        account_id: { type: "number", description: "ID of the account" },
-        search_term: { type: "string", description: "Search term to filter users" },
-        sort: { type: "string", enum: ["username", "email", "sis_id", "last_login"], description: "Sort order" },
-        order: { type: "string", enum: ["asc", "desc"], description: "Sort direction" }
-      },
-      required: ["account_id"]
-    }
-  },
-  {
-    name: "canvas_create_user",
-    description: "Create a new user in an account",
-    inputSchema: {
-      type: "object",
-      properties: {
-        account_id: { type: "number", description: "ID of the account" },
-        user: {
-          type: "object",
-          properties: {
-            name: { type: "string", description: "Full name of the user" },
-            short_name: { type: "string", description: "Short name of the user" },
-            sortable_name: { type: "string", description: "Sortable name (Last, First)" },
-            time_zone: { type: "string", description: "User's time zone" }
-          },
-          required: ["name"]
-        },
-        pseudonym: {
-          type: "object",
-          properties: {
-            unique_id: { type: "string", description: "Unique login ID (email or username)" },
-            password: { type: "string", description: "User's password" },
-            sis_user_id: { type: "string", description: "SIS ID for the user" },
-            send_confirmation: { type: "boolean", description: "Send confirmation email" }
-          },
-          required: ["unique_id"]
-        }
-      },
-      required: ["account_id", "user", "pseudonym"]
-    }
-  },
-  {
-    name: "canvas_list_sub_accounts",
-    description: "List sub-accounts for an account",
-    inputSchema: {
-      type: "object",
-      properties: {
-        account_id: { type: "number", description: "ID of the parent account" }
-      },
-      required: ["account_id"]
-    }
-  },
-  {
-    name: "canvas_get_account_reports",
-    description: "List available reports for an account",
-    inputSchema: {
-      type: "object",
-      properties: {
-        account_id: { type: "number", description: "ID of the account" }
-      },
-      required: ["account_id"]
-    }
-  },
-  {
-    name: "canvas_create_account_report",
-    description: "Generate a report for an account",
-    inputSchema: {
-      type: "object",
-      properties: {
-        account_id: { type: "number", description: "ID of the account" },
-        report: { type: "string", description: "Type of report to generate" },
-        parameters: { type: "object", description: "Report parameters" }
-      },
-      required: ["account_id", "report"]
-    }
-  }
 ];
 
 type StructuredToolError = {
@@ -842,12 +519,9 @@ type StreamableHttpRuntime = {
 
 const READ_ONLY_TOOL_PREFIXES = ["canvas_list_", "canvas_get_", "canvas_health_check"] as const;
 const MUTATING_TOOL_PREFIXES = [
-  "canvas_create_",
   "canvas_update_",
   "canvas_submit_",
-  "canvas_enroll_",
   "canvas_mark_",
-  "canvas_post_",
   "canvas_start_"
 ] as const;
 
@@ -1319,28 +993,6 @@ export class CanvasMCPServer {
             };
           }
           
-          case "canvas_create_course": {
-            const courseArgs = args as unknown as CreateCourseArgs;
-            if (!courseArgs.account_id || !courseArgs.name) {
-              throw new Error("Missing required fields: account_id and name");
-            }
-            const course = await this.client.createCourse(courseArgs);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(course, includeRaw) }]
-            };
-          }
-          
-          case "canvas_update_course": {
-            const updateArgs = args as unknown as UpdateCourseArgs;
-            if (!updateArgs.course_id) {
-              throw new Error("Missing required field: course_id");
-            }
-            const updatedCourse = await this.client.updateCourse(updateArgs);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(updatedCourse, includeRaw) }]
-            };
-          }
-
           // Assignment management
           case "canvas_list_assignments": {
             const { course_id, include_submissions = false } = args as { 
@@ -1371,28 +1023,6 @@ export class CanvasMCPServer {
             };
           }
           
-          case "canvas_create_assignment": {
-            const assignmentArgs = args as unknown as CreateAssignmentArgs;
-            if (!assignmentArgs.course_id || !assignmentArgs.name) {
-              throw new Error("Missing required fields: course_id and name");
-            }
-            const assignment = await this.client.createAssignment(assignmentArgs);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(assignment, includeRaw) }]
-            };
-          }
-          
-          case "canvas_update_assignment": {
-            const updateAssignmentArgs = args as unknown as UpdateAssignmentArgs;
-            if (!updateAssignmentArgs.course_id || !updateAssignmentArgs.assignment_id) {
-              throw new Error("Missing required fields: course_id and assignment_id");
-            }
-            const updatedAssignment = await this.client.updateAssignment(updateAssignmentArgs);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(updatedAssignment, includeRaw) }]
-            };
-          }
-
           case "canvas_list_assignment_groups": {
             const { course_id } = args as { course_id: number };
             if (!course_id) throw new Error("Missing required field: course_id");
@@ -1434,18 +1064,6 @@ export class CanvasMCPServer {
             };
           }
           
-          case "canvas_submit_grade": {
-            const gradeArgs = args as unknown as SubmitGradeArgs;
-            if (!gradeArgs.course_id || !gradeArgs.assignment_id || 
-                !gradeArgs.user_id || gradeArgs.grade === undefined) {
-              throw new Error("Missing required fields for grade submission");
-            }
-            const submission = await this.client.submitGrade(gradeArgs);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(submission, includeRaw) }]
-            };
-          }
-
           // Files
           case "canvas_list_files": {
             const { course_id, folder_id } = args as { course_id: number; folder_id?: number };
@@ -1545,17 +1163,6 @@ export class CanvasMCPServer {
             const updatedProfile = await this.client.updateUserProfile(profileData);
             return {
               content: [{ type: "text", text: this.serializeToolOutput(updatedProfile, includeRaw) }]
-            };
-          }
-
-          case "canvas_enroll_user": {
-            const enrollArgs = args as unknown as EnrollUserArgs;
-            if (!enrollArgs.course_id || !enrollArgs.user_id) {
-              throw new Error("Missing required fields: course_id and user_id");
-            }
-            const enrollment = await this.client.enrollUser(enrollArgs);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(enrollment, includeRaw) }]
             };
           }
 
@@ -1659,18 +1266,6 @@ export class CanvasMCPServer {
             };
           }
 
-          case "canvas_post_to_discussion": {
-            const { course_id, topic_id, message } = args as { course_id: number; topic_id: number; message: string };
-            if (!course_id || !topic_id || !message) {
-              throw new Error("Missing required fields: course_id, topic_id, and message");
-            }
-
-            const post = await this.client.postToDiscussion(course_id, topic_id, message);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(post, includeRaw) }]
-            };
-          }
-
           case "canvas_list_announcements": {
             const { course_id } = args as { course_id: number };
             if (!course_id) throw new Error("Missing required field: course_id");
@@ -1699,18 +1294,6 @@ export class CanvasMCPServer {
             }
 
             const quiz = await this.client.getQuiz(String(course_id), quiz_id);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(quiz, includeRaw) }]
-            };
-          }
-
-          case "canvas_create_quiz": {
-            const { course_id, ...quizData } = args as { course_id: number; title?: string; [key: string]: unknown };
-            if (!course_id || !quizData.title) {
-              throw new Error("Missing required fields: course_id and title");
-            }
-
-            const quiz = await this.client.createQuiz(course_id, quizData);
             return {
               content: [{ type: "text", text: this.serializeToolOutput(quiz, includeRaw) }]
             };
@@ -1769,18 +1352,6 @@ export class CanvasMCPServer {
             };
           }
 
-          case "canvas_create_conversation": {
-            const { recipients, body, subject } = args as { recipients: string[]; body: string; subject?: string };
-            if (!recipients || recipients.length === 0 || !body) {
-              throw new Error("Missing required fields: recipients and body");
-            }
-
-            const conversation = await this.client.createConversation(recipients, body, subject);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(conversation, includeRaw) }]
-            };
-          }
-
           case "canvas_list_notifications": {
             const notifications = await this.client.listNotifications();
             return {
@@ -1795,85 +1366,6 @@ export class CanvasMCPServer {
             const syllabus = await this.client.getSyllabus(course_id);
             return {
               content: [{ type: "text", text: this.serializeToolOutput(syllabus, includeRaw) }]
-            };
-          }
-          
-          // Account Management
-          case "canvas_get_account": {
-            const { account_id } = args as { account_id: number };
-            if (!account_id) throw new Error("Missing required field: account_id");
-            
-            const account = await this.client.getAccount(account_id);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(account, includeRaw) }]
-            };
-          }
-
-          case "canvas_list_account_courses": {
-            const accountCoursesArgs = args as unknown as ListAccountCoursesArgs;
-            if (!accountCoursesArgs.account_id) {
-              throw new Error("Missing required field: account_id");
-            }
-            
-            const courses = await this.client.listAccountCourses(accountCoursesArgs);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(courses, includeRaw) }]
-            };
-          }
-
-          case "canvas_list_account_users": {
-            const accountUsersArgs = args as unknown as ListAccountUsersArgs;
-            if (!accountUsersArgs.account_id) {
-              throw new Error("Missing required field: account_id");
-            }
-            
-            const users = await this.client.listAccountUsers(accountUsersArgs);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(users, includeRaw) }]
-            };
-          }
-
-          case "canvas_create_user": {
-            const createUserArgs = args as unknown as CreateUserArgs;
-            if (!createUserArgs.account_id || !createUserArgs.user || !createUserArgs.pseudonym) {
-              throw new Error("Missing required fields: account_id, user, and pseudonym");
-            }
-            
-            const user = await this.client.createUser(createUserArgs);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(user, includeRaw) }]
-            };
-          }
-
-          case "canvas_list_sub_accounts": {
-            const { account_id } = args as { account_id: number };
-            if (!account_id) throw new Error("Missing required field: account_id");
-            
-            const subAccounts = await this.client.listSubAccounts(account_id);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(subAccounts, includeRaw) }]
-            };
-          }
-
-          case "canvas_get_account_reports": {
-            const { account_id } = args as { account_id: number };
-            if (!account_id) throw new Error("Missing required field: account_id");
-            
-            const reports = await this.client.getAccountReports(account_id);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(reports, includeRaw) }]
-            };
-          }
-
-          case "canvas_create_account_report": {
-            const createReportArgs = args as unknown as CreateReportArgs;
-            if (!createReportArgs.account_id || !createReportArgs.report) {
-              throw new Error("Missing required fields: account_id and report");
-            }
-            
-            const report = await this.client.createAccountReport(createReportArgs);
-            return {
-              content: [{ type: "text", text: this.serializeToolOutput(report, includeRaw) }]
             };
           }
           
