@@ -7,10 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 > **Note** — Starting at v2.4.0 this fork ([KrishPatel1404/mcp-canvas-lms](https://github.com/KrishPatel1404/mcp-canvas-lms)) diverges from the upstream [DMontgomery40/mcp-canvas-lms](https://github.com/DMontgomery40/mcp-canvas-lms). Entries below v2.4.0 are from the original project.
 
-## [2.4.1] - 2026-03-16
+## [2.5.0] - 2026-03-16
 
 ### Added
-- In-memory TTL response cache with LRU eviction and request deduplication in `CanvasClient` (3 tiers: 10 min / 5 min / 1 min based on endpoint volatility)
+- In-memory TTL response cache with LRU eviction in `CanvasClient` (max 500 entries, 3 tiers: 10 min / 5 min / 1 min based on endpoint volatility)
+- In-flight request deduplication — concurrent calls for the same endpoint share a single HTTP request
+- Default `per_page=100` on all Canvas API requests (Canvas defaults to 10), reducing pagination round-trips by up to 10x
+- `clearCache()` method on `CanvasClient` for programmatic cache invalidation
 - `include_raw` parameter on every tool — when `true`, returns the full raw Canvas API payload instead of the default summary
 - Streamable-HTTP transport (`MCP_TRANSPORT=streamable-http`) alongside the default stdio transport
 - MCP tool annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`) on all 26 tools
@@ -18,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Read-only server**: Removed all 12 state-mutating tools — the server is now entirely read-only and safe to connect to any Canvas student account
+- Compact JSON serialization for all tool output, resource reads, and error responses (no pretty-printing) — saves ~30-40% tokens in LLM context
+- Leaner tool descriptions — removed per-tool boilerplate ("No Canvas state is modified. Latency depends on..."), saving ~500+ tokens per `tools/list` response
 - Scoped npm package as `@krishpkreame/canvas-mcp-server` with a `canvas-mcp` bin alias
 - Announcements endpoint switched to the global `/api/v1/announcements` route with `context_codes` for cross-instance reliability
 - Improved pagination handling in `CanvasClient` (follows `Link: rel="next"` headers automatically)
@@ -39,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `node_modules/` and `dist/` blobs purged from git history (repo size 5.7 MiB → 174 KiB)
 
 ### Fixed
+- `CANVAS_TIMEOUT` environment variable is now respected — previously parsed but never passed to the Axios client (hardcoded at 30s)
 - Resolved all 19 ESLint warnings across the codebase
 - Fixed course grades API parameter handling
 
