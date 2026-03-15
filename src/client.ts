@@ -584,9 +584,11 @@ export class CanvasClient {
   // ANNOUNCEMENTS
   // ---------------------
   async listAnnouncements(courseId: string): Promise<CanvasAnnouncement[]> {
-    const response = await this.client.get(`/courses/${courseId}/discussion_topics`, {
+    // Canvas announcements endpoint uses a global /announcements endpoint
+    // with context_codes parameter instead of course-specific endpoint
+    const response = await this.client.get('/announcements', {
       params: {
-        type: 'announcement',
+        'context_codes[]': `course_${courseId}`,
         include: ['assignment']
       }
     });
