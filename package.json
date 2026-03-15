@@ -1,11 +1,12 @@
 {
-  "name": "canvas-mcp-server",
+  "name": "@krishpkreame/canvas-mcp-server",
   "version": "2.4.0",
   "description": "A read-only Model Context Protocol (MCP) server for Canvas LMS — safe for student use with no state-mutating operations",
   "type": "module",
   "main": "build/index.js",
   "bin": {
-    "canvas-mcp-server": "build/index.js"
+    "canvas-mcp-server": "build/index.js",
+    "canvas-mcp": "build/index.js"
   },
   "mcp": {
     "server": {
