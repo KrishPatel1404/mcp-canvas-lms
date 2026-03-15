@@ -1361,6 +1361,12 @@ export async function main(): Promise<void> {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+import { realpathSync } from 'fs';
+
+const entryArg = process.argv[1];
+if (
+  entryArg &&
+  realpathSync(path.resolve(entryArg)) === realpathSync(fileURLToPath(import.meta.url))
+) {
   void main();
 }
