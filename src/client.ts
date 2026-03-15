@@ -1,8 +1,8 @@
 // src/client.ts
 
-import axios, { AxiosInstance, AxiosError } from 'axios';
-import { 
-  CanvasCourse, 
+import axios, { AxiosInstance, AxiosError, InternalAxiosRequestConfig } from 'axios';
+import {
+  CanvasCourse,
   CanvasAssignment,
   CanvasSubmission,
   CanvasUser,
@@ -18,9 +18,16 @@ import {
   CanvasAssignmentGroup,
   CanvasNotification,
   CanvasFile,
+  CanvasFolder,
+  CanvasDashboardCard,
   CanvasSyllabus,
-  FileUploadArgs
+  CanvasErrorResponse,
+  FileUploadArgs,
 } from './types.js';
+
+interface RetryableConfig extends InternalAxiosRequestConfig {
+  __retryCount?: number;
+}
 
 export class CanvasClient {
   private client: AxiosInstance;
@@ -28,7 +35,11 @@ export class CanvasClient {
   private maxRetries: number = 3;
   private retryDelay: number = 1000;
 
-  constructor(token: string, domain: string, options?: { maxRetries?: number; retryDelay?: number }) {
+  constructor(
+    token: string,
+    domain: string,
+    options?: { maxRetries?: number; retryDelay?: number }
+  ) {
     this.baseURL = `https://${domain}/api/v1`;
     this.maxRetries = options?.maxRetries ?? 3;
     this.retryDelay = options?.retryDelay ?? 1000;
@@ -36,10 +47,10 @@ export class CanvasClient {
     this.client = axios.create({
       baseURL: this.baseURL,
       headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
       },
-      timeout: 30000 // 30 second timeout
+      timeout: 30000, // 30 second timeout
     });
 
     this.setupInterceptors();
@@ -93,16 +104,17 @@ export class CanvasClient {
         return response;
       },
       async (error: AxiosError) => {
-        const config = error.config as any;
-        
+        const config = error.config as RetryableConfig | undefined;
+
         // Retry logic for specific errors
-        if (this.shouldRetry(error) && config && config.__retryCount < this.maxRetries) {
-          config.__retryCount = config.__retryCount || 0;
-          config.__retryCount++;
-          
+        if (this.shouldRetry(error) && config && (config.__retryCount ?? 0) < this.maxRetries) {
+          config.__retryCount = (config.__retryCount ?? 0) + 1;
+
           const delay = this.retryDelay * Math.pow(2, config.__retryCount - 1); // Exponential backoff
-          console.error(`[Canvas API] Retrying request (${config.__retryCount}/${this.maxRetries}) after ${delay}ms`);
-          
+          console.error(
+            `[Canvas API] Retrying request (${config.__retryCount}/${this.maxRetries}) after ${delay}ms`
+          );
+
           await this.sleep(delay);
           return this.client.request(config);
         }
@@ -111,48 +123,42 @@ export class CanvasClient {
         if (error.response) {
           const { status, data, headers } = error.response;
           const contentType = headers?.['content-type'] || 'unknown';
-          console.error(`[Canvas API] Error response: ${status}, Content-Type: ${contentType}, Data type: ${typeof data}`);
-          
+          console.error(
+            `[Canvas API] Error response: ${status}, Content-Type: ${contentType}, Data type: ${typeof data}`
+          );
+
           let errorMessage: string;
-          
+
           try {
             // Check if data is already a string (HTML error pages, plain text, etc.)
             if (typeof data === 'string') {
               errorMessage = data.length > 200 ? data.substring(0, 200) + '...' : data;
             } else if (data && typeof data === 'object') {
-              // Handle structured Canvas API error responses
-              if ((data as any)?.message) {
-                errorMessage = (data as any).message;
-              } else if ((data as any)?.errors && Array.isArray((data as any).errors)) {
-                errorMessage = (data as any).errors.map((err: any) => err.message || err).join(', ');
+              const errorData = data as CanvasErrorResponse;
+              if (errorData.message) {
+                errorMessage = errorData.message;
+              } else if (errorData.errors && Array.isArray(errorData.errors)) {
+                errorMessage = errorData.errors.map((err) => err.message || String(err)).join(', ');
               } else {
                 errorMessage = JSON.stringify(data);
               }
             } else {
               errorMessage = String(data);
             }
-          } catch (jsonError) {
+          } catch {
             // Fallback if JSON operations fail
             errorMessage = String(data);
           }
-          
-          throw new CanvasAPIError(
-            `Canvas API Error (${status}): ${errorMessage}`, 
-            status, 
-            data
-          );
+
+          throw new CanvasAPIError(`Canvas API Error (${status}): ${errorMessage}`, status, data);
         }
-        
+
         // Handle network errors or other issues
         if (error.request) {
           console.error('[Canvas API] Network error - no response received:', error.message);
-          throw new CanvasAPIError(
-            `Network error: ${error.message}`,
-            0,
-            null
-          );
+          throw new CanvasAPIError(`Network error: ${error.message}`, 0, null);
         }
-        
+
         console.error('[Canvas API] Unexpected error:', error.message);
         throw error;
       }
@@ -161,18 +167,18 @@ export class CanvasClient {
 
   private shouldRetry(error: AxiosError): boolean {
     if (!error.response) return true; // Network errors
-    
+
     const status = error.response.status;
     return status === 429 || status >= 500; // Rate limit or server errors
   }
 
   private sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   private getNextPageUrl(linkHeader: string): string | null {
     const links = linkHeader.split(',');
-    const nextLink = links.find(link => link.includes('rel="next"'));
+    const nextLink = links.find((link) => link.includes('rel="next"'));
     if (!nextLink) return null;
 
     const match = nextLink.match(/<(.+?)>/);
@@ -182,18 +188,22 @@ export class CanvasClient {
   // ---------------------
   // HEALTH CHECK
   // ---------------------
-  async healthCheck(): Promise<{ status: 'ok' | 'error'; timestamp: string; user?: any }> {
+  async healthCheck(): Promise<{
+    status: 'ok' | 'error';
+    timestamp: string;
+    user?: { id: number; name: string };
+  }> {
     try {
       const user = await this.getUserProfile();
       return {
         status: 'ok',
         timestamp: new Date().toISOString(),
-        user: { id: user.id, name: user.name }
+        user: { id: user.id, name: user.name },
       };
-    } catch (error) {
+    } catch {
       return {
         status: 'error',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
   }
@@ -202,10 +212,10 @@ export class CanvasClient {
   // COURSES
   // ---------------------
   async listCourses(includeEnded: boolean = false): Promise<CanvasCourse[]> {
-    const params: any = {
-      include: ['total_students', 'teachers', 'term', 'course_progress']
+    const params: Record<string, unknown> = {
+      include: ['total_students', 'teachers', 'term', 'course_progress'],
     };
-    
+
     if (!includeEnded) {
       params.state = ['available', 'completed'];
     }
@@ -217,8 +227,15 @@ export class CanvasClient {
   async getCourse(courseId: number): Promise<CanvasCourse> {
     const response = await this.client.get(`/courses/${courseId}`, {
       params: {
-        include: ['total_students', 'teachers', 'term', 'course_progress', 'sections', 'syllabus_body']
-      }
+        include: [
+          'total_students',
+          'teachers',
+          'term',
+          'course_progress',
+          'sections',
+          'syllabus_body',
+        ],
+      },
     });
     return response.data;
   }
@@ -226,29 +243,34 @@ export class CanvasClient {
   // ---------------------
   // ASSIGNMENTS
   // ---------------------
-  async listAssignments(courseId: number, includeSubmissions: boolean = false): Promise<CanvasAssignment[]> {
-    const params: any = {
-      include: ['assignment_group', 'rubric', 'due_at']
-    };
-    
+  async listAssignments(
+    courseId: number,
+    includeSubmissions: boolean = false
+  ): Promise<CanvasAssignment[]> {
+    const include = ['assignment_group', 'rubric', 'due_at'];
     if (includeSubmissions) {
-      params.include.push('submission');
+      include.push('submission');
     }
 
-    const response = await this.client.get(`/courses/${courseId}/assignments`, { params });
+    const response = await this.client.get(`/courses/${courseId}/assignments`, {
+      params: { include },
+    });
     return response.data;
   }
 
-  async getAssignment(courseId: number, assignmentId: number, includeSubmission: boolean = false): Promise<CanvasAssignment> {
-    const params: any = {
-      include: ['assignment_group', 'rubric']
-    };
-    
+  async getAssignment(
+    courseId: number,
+    assignmentId: number,
+    includeSubmission: boolean = false
+  ): Promise<CanvasAssignment> {
+    const include = ['assignment_group', 'rubric'];
     if (includeSubmission) {
-      params.include.push('submission');
+      include.push('submission');
     }
 
-    const response = await this.client.get(`/courses/${courseId}/assignments/${assignmentId}`, { params });
+    const response = await this.client.get(`/courses/${courseId}/assignments/${assignmentId}`, {
+      params: { include },
+    });
     return response.data;
   }
 
@@ -258,8 +280,8 @@ export class CanvasClient {
   async listAssignmentGroups(courseId: number): Promise<CanvasAssignmentGroup[]> {
     const response = await this.client.get(`/courses/${courseId}/assignment_groups`, {
       params: {
-        include: ['assignments']
-      }
+        include: ['assignments'],
+      },
     });
     return response.data;
   }
@@ -267,8 +289,8 @@ export class CanvasClient {
   async getAssignmentGroup(courseId: number, groupId: number): Promise<CanvasAssignmentGroup> {
     const response = await this.client.get(`/courses/${courseId}/assignment_groups/${groupId}`, {
       params: {
-        include: ['assignments']
-      }
+        include: ['assignments'],
+      },
     });
     return response.data;
   }
@@ -281,20 +303,24 @@ export class CanvasClient {
       `/courses/${courseId}/assignments/${assignmentId}/submissions`,
       {
         params: {
-          include: ['submission_comments', 'rubric_assessment', 'assignment']
-        }
+          include: ['submission_comments', 'rubric_assessment', 'assignment'],
+        },
       }
     );
     return response.data;
   }
 
-  async getSubmission(courseId: number, assignmentId: number, userId: number | 'self' = 'self'): Promise<CanvasSubmission> {
+  async getSubmission(
+    courseId: number,
+    assignmentId: number,
+    userId: number | 'self' = 'self'
+  ): Promise<CanvasSubmission> {
     const response = await this.client.get(
       `/courses/${courseId}/assignments/${assignmentId}/submissions/${userId}`,
       {
         params: {
-          include: ['submission_comments', 'rubric_assessment', 'assignment']
-        }
+          include: ['submission_comments', 'rubric_assessment', 'assignment'],
+        },
       }
     );
     return response.data;
@@ -304,10 +330,8 @@ export class CanvasClient {
   // FILES
   // ---------------------
   async listFiles(courseId: number, folderId?: number): Promise<CanvasFile[]> {
-    const endpoint = folderId 
-      ? `/folders/${folderId}/files`
-      : `/courses/${courseId}/files`;
-    
+    const endpoint = folderId ? `/folders/${folderId}/files` : `/courses/${courseId}/files`;
+
     const response = await this.client.get(endpoint);
     return response.data;
   }
@@ -319,25 +343,25 @@ export class CanvasClient {
 
   async uploadFile(args: FileUploadArgs): Promise<CanvasFile> {
     const { course_id, folder_id, name, size } = args;
-    
+
     // Step 1: Get upload URL
-    const uploadEndpoint = folder_id 
+    const uploadEndpoint = folder_id
       ? `/folders/${folder_id}/files`
       : `/courses/${course_id}/files`;
-      
+
     const uploadResponse = await this.client.post(uploadEndpoint, {
       name,
       size,
-      content_type: args.content_type || 'application/octet-stream'
+      content_type: args.content_type || 'application/octet-stream',
     });
 
     // Note: Actual file upload would require multipart form data handling
-    // This is a simplified version - in practice, you'd need to handle the 
+    // This is a simplified version - in practice, you'd need to handle the
     // two-step upload process Canvas uses
     return uploadResponse.data;
   }
 
-  async listFolders(courseId: number): Promise<any[]> {
+  async listFolders(courseId: number): Promise<CanvasFolder[]> {
     const response = await this.client.get(`/courses/${courseId}/folders`);
     return response.data;
   }
@@ -359,11 +383,11 @@ export class CanvasClient {
   // CALENDAR EVENTS
   // ---------------------
   async listCalendarEvents(startDate?: string, endDate?: string): Promise<CanvasCalendarEvent[]> {
-    const params: any = {
+    const params: Record<string, unknown> = {
       type: 'event',
-      all_events: true
+      all_events: true,
     };
-    
+
     if (startDate) params.start_date = startDate;
     if (endDate) params.end_date = endDate;
 
@@ -373,15 +397,15 @@ export class CanvasClient {
 
   async getUpcomingAssignments(limit: number = 10): Promise<CanvasAssignment[]> {
     const response = await this.client.get('/users/self/upcoming_events', {
-      params: { limit }
+      params: { limit },
     });
-    return response.data.filter((event: any) => event.assignment);
+    return response.data.filter((event: CanvasCalendarEvent) => event.assignment);
   }
 
   // ---------------------
   // DASHBOARD
   // ---------------------
-  async getDashboardCards(): Promise<any[]> {
+  async getDashboardCards(): Promise<CanvasDashboardCard[]> {
     const response = await this.client.get('/dashboard/dashboard_cards');
     return response.data;
   }
@@ -392,12 +416,12 @@ export class CanvasClient {
   async getSyllabus(courseId: number): Promise<CanvasSyllabus> {
     const response = await this.client.get(`/courses/${courseId}`, {
       params: {
-        include: ['syllabus_body']
-      }
+        include: ['syllabus_body'],
+      },
     });
     return {
       course_id: courseId,
-      syllabus_body: response.data.syllabus_body
+      syllabus_body: response.data.syllabus_body,
     };
   }
 
@@ -415,8 +439,8 @@ export class CanvasClient {
   async listUsers(courseId: number): Promise<CanvasUser[]> {
     const response = await this.client.get(`/courses/${courseId}/users`, {
       params: {
-        include: ['email', 'enrollments', 'avatar_url']
-      }
+        include: ['email', 'enrollments', 'avatar_url'],
+      },
     });
     return response.data;
   }
@@ -433,8 +457,8 @@ export class CanvasClient {
     const response = await this.client.get(`/courses/${courseId}/enrollments`, {
       params: {
         user_id: 'self',
-        include: ['grades', 'current_points']
-      }
+        include: ['grades', 'current_points'],
+      },
     });
     return response.data;
   }
@@ -454,8 +478,8 @@ export class CanvasClient {
     const response = await this.client.get('/courses', {
       params: {
         include: ['enrollments', 'total_students', 'term', 'course_progress'],
-        enrollment_state: 'active'
-      }
+        enrollment_state: 'active',
+      },
     });
     return response.data;
   }
@@ -466,8 +490,8 @@ export class CanvasClient {
   async listModules(courseId: number): Promise<CanvasModule[]> {
     const response = await this.client.get(`/courses/${courseId}/modules`, {
       params: {
-        include: ['items']
-      }
+        include: ['items'],
+      },
     });
     return response.data;
   }
@@ -475,8 +499,8 @@ export class CanvasClient {
   async getModule(courseId: number, moduleId: number): Promise<CanvasModule> {
     const response = await this.client.get(`/courses/${courseId}/modules/${moduleId}`, {
       params: {
-        include: ['items']
-      }
+        include: ['items'],
+      },
     });
     return response.data;
   }
@@ -484,18 +508,25 @@ export class CanvasClient {
   async listModuleItems(courseId: number, moduleId: number): Promise<CanvasModuleItem[]> {
     const response = await this.client.get(`/courses/${courseId}/modules/${moduleId}/items`, {
       params: {
-        include: ['content_details']
-      }
+        include: ['content_details'],
+      },
     });
     return response.data;
   }
 
-  async getModuleItem(courseId: number, moduleId: number, itemId: number): Promise<CanvasModuleItem> {
-    const response = await this.client.get(`/courses/${courseId}/modules/${moduleId}/items/${itemId}`, {
-      params: {
-        include: ['content_details']
+  async getModuleItem(
+    courseId: number,
+    moduleId: number,
+    itemId: number
+  ): Promise<CanvasModuleItem> {
+    const response = await this.client.get(
+      `/courses/${courseId}/modules/${moduleId}/items/${itemId}`,
+      {
+        params: {
+          include: ['content_details'],
+        },
       }
-    });
+    );
     return response.data;
   }
 
@@ -508,8 +539,8 @@ export class CanvasClient {
     const response = await this.client.get('/announcements', {
       params: {
         'context_codes[]': `course_${courseId}`,
-        include: ['assignment']
-      }
+        include: ['assignment'],
+      },
     });
     return response.data;
   }
@@ -526,6 +557,4 @@ export class CanvasClient {
     const response = await this.client.get(`/courses/${courseId}/quizzes/${quizId}`);
     return response.data;
   }
-
-
 }

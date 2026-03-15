@@ -62,7 +62,7 @@ export interface CanvasUserProfile {
   bio: string | null;
   title?: string;
   time_zone?: string;
-  calendar?: any;
+  calendar?: Record<string, unknown>;
 }
 
 export interface CanvasCourse {
@@ -94,11 +94,7 @@ export interface CanvasCourseProgress {
   completed_at: string | null;
 }
 
-export type CanvasCourseState = 
-  | 'unpublished'
-  | 'available'
-  | 'completed'
-  | 'deleted';
+export type CanvasCourseState = 'unpublished' | 'available' | 'completed' | 'deleted';
 
 export interface CanvasAssignment {
   readonly id: AssignmentId;
@@ -176,11 +172,7 @@ export interface CanvasRubricAssessment {
   };
 }
 
-export type CanvasSubmissionState =
-  | 'submitted'
-  | 'unsubmitted'
-  | 'graded'
-  | 'pending_review';
+export type CanvasSubmissionState = 'submitted' | 'unsubmitted' | 'graded' | 'pending_review';
 
 export interface CanvasEnrollment {
   readonly id: EnrollmentId;
@@ -201,12 +193,7 @@ export type CanvasEnrollmentType =
   | 'DesignerEnrollment'
   | 'ObserverEnrollment';
 
-export type CanvasEnrollmentState =
-  | 'active'
-  | 'invited'
-  | 'inactive'
-  | 'completed'
-  | 'rejected';
+export type CanvasEnrollmentState = 'active' | 'invited' | 'inactive' | 'completed' | 'rejected';
 
 export interface CanvasGrades {
   readonly current_score: number | null;
@@ -250,7 +237,7 @@ export interface CanvasModuleItem {
   published: boolean;
 }
 
-export type CanvasModuleItemType = 
+export type CanvasModuleItemType =
   | 'File'
   | 'Page'
   | 'Discussion'
@@ -433,6 +420,41 @@ export interface CanvasFile {
   preview_url?: string;
 }
 
+export interface CanvasFolder {
+  id: number;
+  name: string;
+  full_name: string;
+  context_id: number;
+  context_type: string;
+  parent_folder_id: number | null;
+  created_at: string;
+  updated_at: string;
+  files_count: number;
+  folders_count: number;
+  position: number;
+  folders_url: string;
+  files_url: string;
+  locked: boolean;
+  hidden: boolean;
+  locked_for_user: boolean;
+  hidden_for_user: boolean;
+}
+
+export interface CanvasDashboardCard {
+  id: number;
+  shortName: string;
+  originalName: string;
+  courseCode: string;
+  assetString: string;
+  href: string;
+  term: string | null;
+  enrollmentType: string;
+  position: number;
+  isFavorited: boolean;
+  image: string | null;
+  color: string | null;
+}
+
 export interface CanvasSyllabus {
   course_id: number;
   syllabus_body: string;
@@ -493,4 +515,3 @@ export interface CanvasErrorResponse {
   }>;
   error_report_id?: string;
 }
-
