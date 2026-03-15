@@ -53,7 +53,7 @@ tmp/
 .vitest/
 
 # mcporter config (contains secrets)
-config/mcporter.json
+config/*
 
 # opencode local config (contains secrets)
 opencode.json

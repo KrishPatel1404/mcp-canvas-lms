@@ -29,16 +29,85 @@ interface RetryableConfig extends InternalAxiosRequestConfig {
   __retryCount?: number;
 }
 
+// ---------------------
+// TTL tiers (milliseconds)
+// ---------------------
+const TTL_LONG = 10 * 60 * 1000; // 10 min: profile, courses, dashboard, syllabus
+const TTL_MEDIUM = 5 * 60 * 1000; // 5 min: assignments, modules, pages, files, quizzes
+const TTL_SHORT = 1 * 60 * 1000; // 1 min: submissions, grades, calendar, notifications
+
+// ---------------------
+// In-memory TTL cache with LRU eviction
+// ---------------------
+interface CacheEntry {
+  data: unknown;
+  expiresAt: number;
+  lastAccessed: number;
+}
+
+class ResponseCache {
+  private store = new Map<string, CacheEntry>();
+  private readonly maxEntries: number;
+
+  constructor(maxEntries = 500) {
+    this.maxEntries = maxEntries;
+  }
+
+  get<T>(key: string): T | undefined {
+    const entry = this.store.get(key);
+    if (!entry) return undefined;
+    if (Date.now() > entry.expiresAt) {
+      this.store.delete(key);
+      return undefined;
+    }
+    entry.lastAccessed = Date.now();
+    return entry.data as T;
+  }
+
+  set(key: string, data: unknown, ttlMs: number): void {
+    if (this.store.size >= this.maxEntries) {
+      this.evictOldest();
+    }
+    this.store.set(key, {
+      data,
+      expiresAt: Date.now() + ttlMs,
+      lastAccessed: Date.now(),
+    });
+  }
+
+  clear(): void {
+    this.store.clear();
+  }
+
+  get size(): number {
+    return this.store.size;
+  }
+
+  private evictOldest(): void {
+    let oldestKey: string | undefined;
+    let oldestTime = Infinity;
+    for (const [key, entry] of this.store) {
+      if (entry.lastAccessed < oldestTime) {
+        oldestTime = entry.lastAccessed;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) this.store.delete(oldestKey);
+  }
+}
+
 export class CanvasClient {
   private client: AxiosInstance;
   private baseURL: string;
   private maxRetries: number = 3;
   private retryDelay: number = 1000;
+  private readonly cache = new ResponseCache();
+  private readonly inflight = new Map<string, Promise<unknown>>();
 
   constructor(
     token: string,
     domain: string,
-    options?: { maxRetries?: number; retryDelay?: number }
+    options?: { maxRetries?: number; retryDelay?: number; timeout?: number }
   ) {
     this.baseURL = `https://${domain}/api/v1`;
     this.maxRetries = options?.maxRetries ?? 3;
@@ -50,10 +119,57 @@ export class CanvasClient {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
-      timeout: 30000, // 30 second timeout
+      timeout: options?.timeout ?? 30000,
+      params: { per_page: 100 },
     });
 
     this.setupInterceptors();
+  }
+
+  // ---------------------
+  // CACHE HELPERS
+  // ---------------------
+  private buildCacheKey(url: string, params?: Record<string, unknown>): string {
+    const sorted = params ? JSON.stringify(params, Object.keys(params).sort()) : '';
+    return `${url}?${sorted}`;
+  }
+
+  /**
+   * Cached GET with in-flight deduplication.
+   * Concurrent calls for the same key share a single HTTP request.
+   */
+  private async cachedGet<T>(
+    url: string,
+    params: Record<string, unknown> | undefined,
+    ttlMs: number
+  ): Promise<T> {
+    const key = this.buildCacheKey(url, params);
+
+    const cached = this.cache.get<T>(key);
+    if (cached !== undefined) return cached;
+
+    const existing = this.inflight.get(key);
+    if (existing) return existing as Promise<T>;
+
+    const promise = this.client
+      .get(url, params ? { params } : undefined)
+      .then((response) => {
+        const data = response.data as T;
+        this.cache.set(key, data, ttlMs);
+        this.inflight.delete(key);
+        return data;
+      })
+      .catch((err: unknown) => {
+        this.inflight.delete(key);
+        throw err;
+      });
+
+    this.inflight.set(key, promise);
+    return promise;
+  }
+
+  clearCache(): void {
+    this.cache.clear();
   }
 
   private setupInterceptors(): void {
@@ -110,7 +226,7 @@ export class CanvasClient {
         if (this.shouldRetry(error) && config && (config.__retryCount ?? 0) < this.maxRetries) {
           config.__retryCount = (config.__retryCount ?? 0) + 1;
 
-          const delay = this.retryDelay * Math.pow(2, config.__retryCount - 1); // Exponential backoff
+          const delay = this.retryDelay * Math.pow(2, config.__retryCount - 1);
           console.error(
             `[Canvas API] Retrying request (${config.__retryCount}/${this.maxRetries}) after ${delay}ms`
           );
@@ -130,7 +246,6 @@ export class CanvasClient {
           let errorMessage: string;
 
           try {
-            // Check if data is already a string (HTML error pages, plain text, etc.)
             if (typeof data === 'string') {
               errorMessage = data.length > 200 ? data.substring(0, 200) + '...' : data;
             } else if (data && typeof data === 'object') {
@@ -146,14 +261,12 @@ export class CanvasClient {
               errorMessage = String(data);
             }
           } catch {
-            // Fallback if JSON operations fail
             errorMessage = String(data);
           }
 
           throw new CanvasAPIError(`Canvas API Error (${status}): ${errorMessage}`, status, data);
         }
 
-        // Handle network errors or other issues
         if (error.request) {
           console.error('[Canvas API] Network error - no response received:', error.message);
           throw new CanvasAPIError(`Network error: ${error.message}`, 0, null);
@@ -166,10 +279,9 @@ export class CanvasClient {
   }
 
   private shouldRetry(error: AxiosError): boolean {
-    if (!error.response) return true; // Network errors
-
+    if (!error.response) return true;
     const status = error.response.status;
-    return status === 429 || status >= 500; // Rate limit or server errors
+    return status === 429 || status >= 500;
   }
 
   private sleep(ms: number): Promise<void> {
@@ -186,7 +298,7 @@ export class CanvasClient {
   }
 
   // ---------------------
-  // HEALTH CHECK
+  // HEALTH CHECK (uncached -- used to verify connectivity)
   // ---------------------
   async healthCheck(): Promise<{
     status: 'ok' | 'error';
@@ -209,24 +321,22 @@ export class CanvasClient {
   }
 
   // ---------------------
-  // COURSES
+  // COURSES (TTL_LONG)
   // ---------------------
   async listCourses(includeEnded: boolean = false): Promise<CanvasCourse[]> {
     const params: Record<string, unknown> = {
       include: ['total_students', 'teachers', 'term', 'course_progress'],
     };
-
     if (!includeEnded) {
       params.state = ['available', 'completed'];
     }
-
-    const response = await this.client.get('/courses', { params });
-    return response.data;
+    return this.cachedGet('/courses', params, TTL_LONG);
   }
 
   async getCourse(courseId: number): Promise<CanvasCourse> {
-    const response = await this.client.get(`/courses/${courseId}`, {
-      params: {
+    return this.cachedGet(
+      `/courses/${courseId}`,
+      {
         include: [
           'total_students',
           'teachers',
@@ -236,12 +346,12 @@ export class CanvasClient {
           'syllabus_body',
         ],
       },
-    });
-    return response.data;
+      TTL_MEDIUM
+    );
   }
 
   // ---------------------
-  // ASSIGNMENTS
+  // ASSIGNMENTS (TTL_MEDIUM)
   // ---------------------
   async listAssignments(
     courseId: number,
@@ -251,11 +361,7 @@ export class CanvasClient {
     if (includeSubmissions) {
       include.push('submission');
     }
-
-    const response = await this.client.get(`/courses/${courseId}/assignments`, {
-      params: { include },
-    });
-    return response.data;
+    return this.cachedGet(`/courses/${courseId}/assignments`, { include }, TTL_MEDIUM);
   }
 
   async getAssignment(
@@ -267,47 +373,41 @@ export class CanvasClient {
     if (includeSubmission) {
       include.push('submission');
     }
-
-    const response = await this.client.get(`/courses/${courseId}/assignments/${assignmentId}`, {
-      params: { include },
-    });
-    return response.data;
+    return this.cachedGet(
+      `/courses/${courseId}/assignments/${assignmentId}`,
+      { include },
+      TTL_MEDIUM
+    );
   }
 
   // ---------------------
-  // ASSIGNMENT GROUPS
+  // ASSIGNMENT GROUPS (TTL_MEDIUM)
   // ---------------------
   async listAssignmentGroups(courseId: number): Promise<CanvasAssignmentGroup[]> {
-    const response = await this.client.get(`/courses/${courseId}/assignment_groups`, {
-      params: {
-        include: ['assignments'],
-      },
-    });
-    return response.data;
+    return this.cachedGet(
+      `/courses/${courseId}/assignment_groups`,
+      { include: ['assignments'] },
+      TTL_MEDIUM
+    );
   }
 
   async getAssignmentGroup(courseId: number, groupId: number): Promise<CanvasAssignmentGroup> {
-    const response = await this.client.get(`/courses/${courseId}/assignment_groups/${groupId}`, {
-      params: {
-        include: ['assignments'],
-      },
-    });
-    return response.data;
+    return this.cachedGet(
+      `/courses/${courseId}/assignment_groups/${groupId}`,
+      { include: ['assignments'] },
+      TTL_MEDIUM
+    );
   }
 
   // ---------------------
-  // SUBMISSIONS
+  // SUBMISSIONS (TTL_SHORT)
   // ---------------------
   async getSubmissions(courseId: number, assignmentId: number): Promise<CanvasSubmission[]> {
-    const response = await this.client.get(
+    return this.cachedGet(
       `/courses/${courseId}/assignments/${assignmentId}/submissions`,
-      {
-        params: {
-          include: ['submission_comments', 'rubric_assessment', 'assignment'],
-        },
-      }
+      { include: ['submission_comments', 'rubric_assessment', 'assignment'] },
+      TTL_SHORT
     );
-    return response.data;
   }
 
   async getSubmission(
@@ -315,36 +415,28 @@ export class CanvasClient {
     assignmentId: number,
     userId: number | 'self' = 'self'
   ): Promise<CanvasSubmission> {
-    const response = await this.client.get(
+    return this.cachedGet(
       `/courses/${courseId}/assignments/${assignmentId}/submissions/${userId}`,
-      {
-        params: {
-          include: ['submission_comments', 'rubric_assessment', 'assignment'],
-        },
-      }
+      { include: ['submission_comments', 'rubric_assessment', 'assignment'] },
+      TTL_SHORT
     );
-    return response.data;
   }
 
   // ---------------------
-  // FILES
+  // FILES (TTL_MEDIUM)
   // ---------------------
   async listFiles(courseId: number, folderId?: number): Promise<CanvasFile[]> {
     const endpoint = folderId ? `/folders/${folderId}/files` : `/courses/${courseId}/files`;
-
-    const response = await this.client.get(endpoint);
-    return response.data;
+    return this.cachedGet(endpoint, undefined, TTL_MEDIUM);
   }
 
   async getFile(fileId: number): Promise<CanvasFile> {
-    const response = await this.client.get(`/files/${fileId}`);
-    return response.data;
+    return this.cachedGet(`/files/${fileId}`, undefined, TTL_MEDIUM);
   }
 
   async uploadFile(args: FileUploadArgs): Promise<CanvasFile> {
     const { course_id, folder_id, name, size } = args;
 
-    // Step 1: Get upload URL
     const uploadEndpoint = folder_id
       ? `/folders/${folder_id}/files`
       : `/courses/${course_id}/files`;
@@ -355,163 +447,151 @@ export class CanvasClient {
       content_type: args.content_type || 'application/octet-stream',
     });
 
-    // Note: Actual file upload would require multipart form data handling
-    // This is a simplified version - in practice, you'd need to handle the
-    // two-step upload process Canvas uses
     return uploadResponse.data;
   }
 
   async listFolders(courseId: number): Promise<CanvasFolder[]> {
-    const response = await this.client.get(`/courses/${courseId}/folders`);
-    return response.data;
+    return this.cachedGet(`/courses/${courseId}/folders`, undefined, TTL_MEDIUM);
   }
 
   // ---------------------
-  // PAGES
+  // PAGES (TTL_MEDIUM)
   // ---------------------
   async listPages(courseId: number): Promise<CanvasPage[]> {
-    const response = await this.client.get(`/courses/${courseId}/pages`);
-    return response.data;
+    return this.cachedGet(`/courses/${courseId}/pages`, undefined, TTL_MEDIUM);
   }
 
   async getPage(courseId: number, pageUrl: string): Promise<CanvasPage> {
-    const response = await this.client.get(`/courses/${courseId}/pages/${pageUrl}`);
-    return response.data;
+    return this.cachedGet(`/courses/${courseId}/pages/${pageUrl}`, undefined, TTL_MEDIUM);
   }
 
   // ---------------------
-  // CALENDAR EVENTS
+  // CALENDAR EVENTS (TTL_SHORT)
   // ---------------------
   async listCalendarEvents(startDate?: string, endDate?: string): Promise<CanvasCalendarEvent[]> {
     const params: Record<string, unknown> = {
       type: 'event',
       all_events: true,
     };
-
     if (startDate) params.start_date = startDate;
     if (endDate) params.end_date = endDate;
-
-    const response = await this.client.get('/calendar_events', { params });
-    return response.data;
+    return this.cachedGet('/calendar_events', params, TTL_SHORT);
   }
 
   async getUpcomingAssignments(limit: number = 10): Promise<CanvasAssignment[]> {
+    const key = this.buildCacheKey('/users/self/upcoming_events', { limit });
+    const cached = this.cache.get<CanvasAssignment[]>(key);
+    if (cached !== undefined) return cached;
+
     const response = await this.client.get('/users/self/upcoming_events', {
       params: { limit },
     });
-    return response.data.filter((event: CanvasCalendarEvent) => event.assignment);
+    const result = response.data.filter((event: CanvasCalendarEvent) => event.assignment);
+    this.cache.set(key, result, TTL_SHORT);
+    return result;
   }
 
   // ---------------------
-  // DASHBOARD
+  // DASHBOARD (TTL_LONG)
   // ---------------------
   async getDashboardCards(): Promise<CanvasDashboardCard[]> {
-    const response = await this.client.get('/dashboard/dashboard_cards');
-    return response.data;
+    return this.cachedGet('/dashboard/dashboard_cards', undefined, TTL_LONG);
   }
 
   // ---------------------
-  // SYLLABUS
+  // SYLLABUS (TTL_LONG)
   // ---------------------
   async getSyllabus(courseId: number): Promise<CanvasSyllabus> {
+    const key = this.buildCacheKey(`/courses/${courseId}/_syllabus`, undefined);
+    const cached = this.cache.get<CanvasSyllabus>(key);
+    if (cached !== undefined) return cached;
+
     const response = await this.client.get(`/courses/${courseId}`, {
-      params: {
-        include: ['syllabus_body'],
-      },
+      params: { include: ['syllabus_body'] },
     });
-    return {
+    const result: CanvasSyllabus = {
       course_id: courseId,
       syllabus_body: response.data.syllabus_body,
     };
+    this.cache.set(key, result, TTL_LONG);
+    return result;
   }
 
   // ---------------------
-  // NOTIFICATIONS
+  // NOTIFICATIONS (TTL_SHORT)
   // ---------------------
   async listNotifications(): Promise<CanvasNotification[]> {
-    const response = await this.client.get('/users/self/activity_stream');
-    return response.data;
+    return this.cachedGet('/users/self/activity_stream', undefined, TTL_SHORT);
   }
 
   // ---------------------
   // USERS AND ENROLLMENTS
   // ---------------------
   async listUsers(courseId: number): Promise<CanvasUser[]> {
-    const response = await this.client.get(`/courses/${courseId}/users`, {
-      params: {
-        include: ['email', 'enrollments', 'avatar_url'],
-      },
-    });
-    return response.data;
+    return this.cachedGet(
+      `/courses/${courseId}/users`,
+      { include: ['email', 'enrollments', 'avatar_url'] },
+      TTL_MEDIUM
+    );
   }
 
   async getEnrollments(courseId: number): Promise<CanvasEnrollment[]> {
-    const response = await this.client.get(`/courses/${courseId}/enrollments`);
-    return response.data;
+    return this.cachedGet(`/courses/${courseId}/enrollments`, undefined, TTL_SHORT);
   }
 
   // ---------------------
-  // GRADES
+  // GRADES (TTL_SHORT)
   // ---------------------
   async getCourseGrades(courseId: number): Promise<CanvasEnrollment[]> {
-    const response = await this.client.get(`/courses/${courseId}/enrollments`, {
-      params: {
-        user_id: 'self',
-        include: ['grades', 'current_points'],
-      },
-    });
-    return response.data;
+    return this.cachedGet(
+      `/courses/${courseId}/enrollments`,
+      { user_id: 'self', include: ['grades', 'current_points'] },
+      TTL_SHORT
+    );
   }
 
   // ---------------------
-  // USER PROFILE
+  // USER PROFILE (TTL_LONG)
   // ---------------------
   async getUserProfile(): Promise<CanvasUserProfile> {
-    const response = await this.client.get('/users/self/profile');
-    return response.data;
+    return this.cachedGet('/users/self/profile', undefined, TTL_LONG);
   }
 
   // ---------------------
-  // STUDENT COURSES
+  // STUDENT COURSES (TTL_LONG)
   // ---------------------
   async listStudentCourses(): Promise<CanvasCourse[]> {
-    const response = await this.client.get('/courses', {
-      params: {
+    return this.cachedGet(
+      '/courses',
+      {
         include: ['enrollments', 'total_students', 'term', 'course_progress'],
         enrollment_state: 'active',
       },
-    });
-    return response.data;
+      TTL_LONG
+    );
   }
 
   // ---------------------
-  // MODULES
+  // MODULES (TTL_MEDIUM)
   // ---------------------
   async listModules(courseId: number): Promise<CanvasModule[]> {
-    const response = await this.client.get(`/courses/${courseId}/modules`, {
-      params: {
-        include: ['items'],
-      },
-    });
-    return response.data;
+    return this.cachedGet(`/courses/${courseId}/modules`, { include: ['items'] }, TTL_MEDIUM);
   }
 
   async getModule(courseId: number, moduleId: number): Promise<CanvasModule> {
-    const response = await this.client.get(`/courses/${courseId}/modules/${moduleId}`, {
-      params: {
-        include: ['items'],
-      },
-    });
-    return response.data;
+    return this.cachedGet(
+      `/courses/${courseId}/modules/${moduleId}`,
+      { include: ['items'] },
+      TTL_MEDIUM
+    );
   }
 
   async listModuleItems(courseId: number, moduleId: number): Promise<CanvasModuleItem[]> {
-    const response = await this.client.get(`/courses/${courseId}/modules/${moduleId}/items`, {
-      params: {
-        include: ['content_details'],
-      },
-    });
-    return response.data;
+    return this.cachedGet(
+      `/courses/${courseId}/modules/${moduleId}/items`,
+      { include: ['content_details'] },
+      TTL_MEDIUM
+    );
   }
 
   async getModuleItem(
@@ -519,42 +599,32 @@ export class CanvasClient {
     moduleId: number,
     itemId: number
   ): Promise<CanvasModuleItem> {
-    const response = await this.client.get(
+    return this.cachedGet(
       `/courses/${courseId}/modules/${moduleId}/items/${itemId}`,
-      {
-        params: {
-          include: ['content_details'],
-        },
-      }
+      { include: ['content_details'] },
+      TTL_MEDIUM
     );
-    return response.data;
   }
 
   // ---------------------
-  // ANNOUNCEMENTS
+  // ANNOUNCEMENTS (TTL_SHORT)
   // ---------------------
   async listAnnouncements(courseId: string): Promise<CanvasAnnouncement[]> {
-    // Canvas announcements endpoint uses a global /announcements endpoint
-    // with context_codes parameter instead of course-specific endpoint
-    const response = await this.client.get('/announcements', {
-      params: {
-        'context_codes[]': `course_${courseId}`,
-        include: ['assignment'],
-      },
-    });
-    return response.data;
+    return this.cachedGet(
+      '/announcements',
+      { 'context_codes[]': `course_${courseId}`, include: ['assignment'] },
+      TTL_SHORT
+    );
   }
 
   // ---------------------
-  // QUIZZES
+  // QUIZZES (TTL_MEDIUM)
   // ---------------------
   async listQuizzes(courseId: string): Promise<CanvasQuiz[]> {
-    const response = await this.client.get(`/courses/${courseId}/quizzes`);
-    return response.data;
+    return this.cachedGet(`/courses/${courseId}/quizzes`, undefined, TTL_MEDIUM);
   }
 
   async getQuiz(courseId: string, quizId: number): Promise<CanvasQuiz> {
-    const response = await this.client.get(`/courses/${courseId}/quizzes/${quizId}`);
-    return response.data;
+    return this.cachedGet(`/courses/${courseId}/quizzes/${quizId}`, undefined, TTL_MEDIUM);
   }
 }
