@@ -12,13 +12,13 @@ FROM node:20.19-alpine AS runtime
 
 LABEL org.opencontainers.image.title="canvas-mcp-server"
 LABEL org.opencontainers.image.description="Model Context Protocol server for Canvas LMS"
-LABEL org.opencontainers.image.source="https://github.com/DMontgomery40/mcp-canvas-lms"
+LABEL org.opencontainers.image.source="https://github.com/krish/mcp-canvas-lms"
 LABEL org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
 
 ENV NODE_ENV=production
-ENV MCP_TRANSPORT=stdio
+ENV MCP_TRANSPORT=streamable-http
 ENV MCP_HTTP_HOST=0.0.0.0
 ENV MCP_HTTP_PORT=3000
 ENV MCP_HTTP_PATH=/mcp
@@ -33,5 +33,8 @@ COPY --from=builder /app/build ./build
 
 USER node
 EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 
 CMD ["node", "build/index.js"]

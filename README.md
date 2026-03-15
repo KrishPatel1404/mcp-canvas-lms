@@ -200,22 +200,10 @@ cp .env.example .env
 docker-compose up -d
 ```
 
-### Kubernetes
-```bash
-kubectl create secret generic canvas-mcp-secrets \
-  --from-literal=CANVAS_API_TOKEN="your_token" \
-  --from-literal=CANVAS_DOMAIN="school.instructure.com"
-
-kubectl apply -f k8s/
-```
-
 ### Health Monitoring
 ```bash
-# Check application health
+# Check application health (HTTP transport only)
 curl http://localhost:3000/health
-
-# Or use the built-in health check
-npm run health-check
 ```
 
 ## Development
@@ -374,14 +362,7 @@ export LOG_LEVEL=debug
 npm start
 ```
 
-**Health Check:**
-```bash
-npm run health-check
-```
-
 ## 🤝 Contributing
-
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ### Quick Contribution Setup
 ```bash
@@ -392,17 +373,10 @@ npm run dev:watch
 # Make changes, add tests, submit PR
 ```
 
-## 📈 Roadmap
-
-- **v2.3**: Enhanced reporting, bulk operations, advanced search
-- **v2.4**: Mobile support, offline capability, analytics dashboard  
-- **v3.0**: Multi-tenant, GraphQL API, AI-powered insights
-
 ## 🙋 Support & Community
 
 - 🐛 **Bug Reports**: [GitHub Issues](https://github.com/DMontgomery40/mcp-canvas-lms/issues)
 - 💬 **Questions**: [GitHub Discussions](https://github.com/DMontgomery40/mcp-canvas-lms/discussions)
-- 📖 **Documentation**: [Wiki](https://github.com/DMontgomery40/mcp-canvas-lms/wiki)
 
 ## Appendix: MCP in Practice (Code Execution, Tool Scale, and Safety)
 
@@ -464,7 +438,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ---
 
 <div align="center">
-  <strong>Canvas MCP Server v2.2.0</strong><br>
+  <strong>Canvas MCP Server v2.3.0</strong><br>
   <em>Empowering students, educators, and administrators with seamless Canvas integration</em><br><br>
   
   ⭐ **Star this repo if it helps you!** ⭐

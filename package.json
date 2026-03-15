@@ -23,7 +23,6 @@
     "dev:watch": "concurrently \"npm run build:watch\" \"nodemon build/index.js\"",
     "test": "vitest --run --config ./vitest.config.ts",
     "test:unit": "vitest --run --config ./vitest.config.ts tests",
-    "test:integration": "vitest --run --config ./vitest.config.ts tests/integration.test.ts",
     "test:watch": "vitest --watch --config ./vitest.config.ts",
     "coverage": "vitest --run --config ./vitest.config.ts --coverage",
     "lint": "eslint src tests --ext .ts,.js",
@@ -37,12 +36,7 @@
     "docker:compose:up": "docker-compose up -d",
     "docker:compose:down": "docker-compose down",
     "docker:compose:logs": "docker-compose logs -f",
-    "health-check": "./scripts/health-check.sh",
-    "deploy": "./scripts/deploy.sh",
     "inspector": "npx @modelcontextprotocol/inspector build/index.js",
-    "publish": "npm run build",
-    "release": "./release.sh",
-    "release:dry-run": "echo 'Dry run mode - no actual publishing' && npm run build && npm run type-check",
     "precommit": "npm run lint && npm run type-check && npm run test:unit"
   },
   "repository": {
