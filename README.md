@@ -1,5 +1,13 @@
 # Canvas MCP Server v2.4.0
 
+> **Forked from [DMontgomery40/mcp-canvas-lms](https://github.com/DMontgomery40/mcp-canvas-lms)**
+>
+> This fork strips the server down to **26 read-only tools** for safe student use. All state-mutating operations have been removed — no assignments can be submitted, no profiles updated, no module items marked complete. Nothing in Canvas is ever modified.
+>
+> **Why this fork?** I'm a student at the University of Auckland (UoA) and wanted a Canvas MCP I could safely connect to Claude without any risk of accidental writes to my account. The upstream repo is a full-featured server for students, instructors, and admins — this fork is just the read side.
+
+---
+
 > A read-only Model Context Protocol (MCP) server for Canvas LMS — safe for student use with no state-mutating operations
 
 ## 🎯 Key Features
