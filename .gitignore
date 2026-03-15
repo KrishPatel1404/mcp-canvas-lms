@@ -54,3 +54,6 @@ tmp/
 
 # mcporter config (contains secrets)
 config/mcporter.json
+
+# opencode local config (contains secrets)
+opencode.json
