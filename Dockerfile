@@ -12,7 +12,7 @@ FROM node:20.19-alpine AS runtime
 
 LABEL org.opencontainers.image.title="canvas-mcp-server"
 LABEL org.opencontainers.image.description="Model Context Protocol server for Canvas LMS"
-LABEL org.opencontainers.image.source="https://github.com/krish/mcp-canvas-lms"
+LABEL org.opencontainers.image.source="https://github.com/DMontgomery40/mcp-canvas-lms"
 LABEL org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
