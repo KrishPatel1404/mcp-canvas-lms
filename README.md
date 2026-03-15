@@ -1,4 +1,4 @@
-# Canvas MCP Server v2.4.0
+# Canvas MCP Server v2.4.1
 
 > **Forked from [DMontgomery40/mcp-canvas-lms](https://github.com/DMontgomery40/mcp-canvas-lms)**
 >
@@ -369,7 +369,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ---
 
 <div align="center">
-  <strong>Canvas MCP Server v2.4.0</strong><br>
+  <strong>Canvas MCP Server v2.4.1</strong><br>
   <em>A safe, read-only Canvas integration for students</em><br><br>
   
   ⭐ **Star this repo if it helps you!** ⭐

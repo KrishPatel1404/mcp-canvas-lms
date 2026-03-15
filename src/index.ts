@@ -1301,7 +1301,7 @@ export function loadConfigFromEnvironment(env = process.env): MCPServerConfig {
 
   return {
     name: 'canvas-mcp-server',
-    version: '2.4.0',
+    version: '2.4.1',
     canvas: {
       token,
       domain,

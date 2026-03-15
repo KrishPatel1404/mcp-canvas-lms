@@ -5,111 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.4.0] - 2026-03-15
+> **Note** — Starting at v2.4.0 this fork ([KrishPatel1404/mcp-canvas-lms](https://github.com/KrishPatel1404/mcp-canvas-lms)) diverges from the upstream [DMontgomery40/mcp-canvas-lms](https://github.com/DMontgomery40/mcp-canvas-lms). Entries below v2.4.0 are from the original project.
+
+## [2.4.1] - 2026-03-16
+
+### Added
+- In-memory TTL response cache with LRU eviction and request deduplication in `CanvasClient` (3 tiers: 10 min / 5 min / 1 min based on endpoint volatility)
+- `include_raw` parameter on every tool — when `true`, returns the full raw Canvas API payload instead of the default summary
+- Streamable-HTTP transport (`MCP_TRANSPORT=streamable-http`) alongside the default stdio transport
+- MCP tool annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`) on all 26 tools
+- MCP resource URIs for courses, assignments, modules, announcements, quizzes, pages, files, calendar, and user profile
 
 ### Changed
-- **Read-only server**: Removed all state-mutating tools. The server is now entirely read-only and safe to connect to any Canvas student account.
+- **Read-only server**: Removed all 12 state-mutating tools — the server is now entirely read-only and safe to connect to any Canvas student account
+- Scoped npm package as `@krishpkreame/canvas-mcp-server` with a `canvas-mcp` bin alias
+- Announcements endpoint switched to the global `/api/v1/announcements` route with `context_codes` for cross-instance reliability
+- Improved pagination handling in `CanvasClient` (follows `Link: rel="next"` headers automatically)
+- All debug logging writes to stderr; stdout is reserved for MCP JSON messages
+- Bumped `@modelcontextprotocol/sdk` to ^1.27, `axios` to ^1.13, `dotenv` to ^17, and all dev-dependencies to latest
 
 ### Removed
 - `canvas_submit_assignment` — assignment submission
-- `canvas_get_dashboard` — dashboard info (endpoint unreliable across Canvas instances)
-- `canvas_get_user_grades` — all-user grades endpoint (replaced by `canvas_get_course_grades`)
+- `canvas_get_dashboard` — dashboard info (unreliable across Canvas instances)
+- `canvas_get_user_grades` — replaced by `canvas_get_course_grades`
 - `canvas_update_user_profile` — profile mutation
 - `canvas_mark_module_item_complete` — module item completion mutation
-- `canvas_list_discussion_topics` — discussion topic listing
-- `canvas_get_discussion_topic` — discussion topic detail
+- `canvas_list_discussion_topics` / `canvas_get_discussion_topic` — discussion topics
 - `canvas_start_quiz_attempt` — quiz attempt mutation
-- `canvas_list_rubrics` — rubric listing (instructor-only endpoint)
-- `canvas_get_rubric` — rubric detail (instructor-only endpoint)
-- `canvas_list_conversations` — conversation/messaging listing
-- `canvas_get_conversation` — conversation detail
+- `canvas_list_rubrics` / `canvas_get_rubric` — instructor-only rubric endpoints
+- `canvas_list_conversations` / `canvas_get_conversation` — messaging
+- Dockerfile, docker-compose.yml, vitest config, and all test files
+- husky, lint-staged, vitest, and @vitest/coverage-v8 dev-dependencies
+- `node_modules/` and `dist/` blobs purged from git history (repo size 5.7 MiB → 174 KiB)
 
-### Technical
-- Removed `MUTATING_TOOL_PREFIXES` entries (`canvas_update_`, `canvas_submit_`, `canvas_mark_`, `canvas_start_`) — no mutating tools remain
-- Removed corresponding `CanvasClient` methods and orphaned `submitQuizAttempt` method
-- Removed unused types: `CanvasDashboard`, `CanvasDiscussionTopic`, `CanvasConversation`, `SubmitAssignmentArgs`
-- 26 read-only tools remain
+### Fixed
+- Resolved all 19 ESLint warnings across the codebase
+- Fixed course grades API parameter handling
 
 ## [2.2.3] - 2025-06-27
 
 ### Fixed
-- **Course Creation Parameters Issue**: Fixed missing `restrict_enrollments_to_course_dates` and other Canvas course parameters in tool schemas
-  - Added `restrict_enrollments_to_course_dates` parameter to `canvas_create_course` and `canvas_update_course` tools
-  - Added missing course parameters: `is_public_to_auth_users`, `public_syllabus`, `public_syllabus_to_auth`, `public_description`
-  - Added missing course settings: `allow_student_wiki_edits`, `allow_wiki_comments`, `allow_student_forum_attachments`
-  - Added missing enrollment options: `open_enrollment`, `self_enrollment`
-  - Added missing course metadata: `term_id`, `sis_course_id`, `integration_id`
-  - Added missing course preferences: `hide_final_grades`, `apply_assignment_group_weights`, `time_zone`
-
-### Technical Details
-- Updated `canvas_create_course` inputSchema to include all parameters from `CreateCourseArgs` interface
-- Updated `canvas_update_course` inputSchema to include all parameters from `UpdateCourseArgs` interface
-- Fixed parameter filtering issue where MCP server was ignoring parameters not defined in inputSchema
-- All course creation/update parameters now properly passed to Canvas API
-
-### Impact
-- Course date restrictions now work properly when `restrict_enrollments_to_course_dates: true` is set
-- All Canvas course configuration options are now available through the MCP tools
-- No breaking changes - fully backward compatible
-
-### GitHub Issue
-- Resolves: [#9 restrict_enrollments_to_course_dates not respected when creating Canvas courses](https://github.com/DMontgomery40/mcp-canvas-lms/issues/9)
+- **Course Creation Parameters**: Added missing `restrict_enrollments_to_course_dates` and other Canvas course parameters to tool schemas
 
 ## [2.2.2] - 2025-06-27
 
 ### Fixed
-- **Critical MCP JSON Communication Fix**: Fixed console.log statements polluting stdout
-  - Changed all debug logging from `console.log` to `console.error` in `src/client.ts`
-  - Fixed tool execution logging in `src/index.ts` to use stderr
-  - Resolved "Unexpected token 'C', '[Canvas API'... is not valid JSON" errors
-  - MCP protocol now receives clean JSON communication over stdio
-  - Eliminated the constant stream of JSON parsing errors (10 errors/second)
-
-### Technical Details
-- Fixed 4 console.log statements that were writing to stdout instead of stderr
-- MCP requires pure JSON communication over stdio - any other output breaks parsing
-- Debug logs now properly go to stderr (visible in logs but don't interfere with protocol)
-- No functional changes - purely a communication protocol fix
-
-### Impact
-- **Complete elimination** of the JSON parsing error spam in Claude Desktop
-- Canvas MCP server now works properly without communication errors
-- Better debugging experience with clean error logs
-- No breaking changes - fully backward compatible
+- **MCP JSON Communication**: Changed `console.log` to `console.error` so debug output no longer pollutes the stdio JSON channel
 
 ## [2.2.1] - 2025-06-27
 
 ### Fixed
-- **Critical JSON Parsing Error Fix**: Resolved "Unexpected token 'C', '!Canvas API...' is not valid JSON" error
-  - Enhanced error response handling to properly process non-JSON responses from Canvas API
-  - Added content-type checking to prevent JSON operations on HTML/text error responses
-  - Improved error message formatting and truncation for long responses
-  - Added graceful fallback for any JSON parsing failures
-  - Enhanced logging for better debugging of Canvas API responses
+- **JSON Parsing Errors**: Enhanced error-response handling to gracefully process non-JSON (HTML/text) responses from Canvas API
 
-### Technical Details
-- Updated `src/client.ts` response interceptor with robust error handling
-- Added type checking for Canvas API error responses (string vs object)
-- Implemented proper handling of HTML error pages and plain text responses
-- Added network error handling for requests with no response
-- Improved debug logging showing status codes, content-types, and data types
-
-### Impact
-- Eliminates the "benign but drives people insane" JSON parsing errors
-- Better error messages for debugging Canvas API issues
-- No breaking changes - fully backward compatible
-- Improved overall stability and error reporting
-
-## [2.2.0] - Previous Release
+## [2.2.0] - 2025-06-27
 
 ### Added
-- Comprehensive Canvas LMS MCP server implementation
-- Full student functionality with assignments, courses, and submissions
-- Account management capabilities
-- Dashboard and calendar integration
-- Discussion topics and announcements support
-- File management and page access
-- Grading and rubric support
-- User profile management
-- Extensive error handling and retry logic
-- Comprehensive type definitions
+- Initial Canvas LMS MCP server with full student functionality
+- Assignments, courses, submissions, calendar, announcements, files, pages, modules, quizzes, grades, user profile
+- Retry logic, comprehensive type definitions, and error handling
