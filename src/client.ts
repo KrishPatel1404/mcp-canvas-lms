@@ -75,9 +75,20 @@ export class CanvasClient {
         if (Array.isArray(data) && linkHeader && contentType.includes('application/json')) {
           let allData = [...data];
           let nextUrl = this.getNextPageUrl(linkHeader);
+          const seenUrls = new Set<string>();
+          const MAX_PAGES = 100;
+          let pageCount = 0;
 
-          while (nextUrl) {
+          while (nextUrl && pageCount < MAX_PAGES) {
+            if (seenUrls.has(nextUrl)) {
+              console.error('[Canvas API] Pagination loop detected, stopping');
+              break;
+            }
+            seenUrls.add(nextUrl);
+            pageCount++;
+
             const nextResponse = await this.client.get(nextUrl);
+            if (!Array.isArray(nextResponse.data) || nextResponse.data.length === 0) break;
             allData = [...allData, ...nextResponse.data];
             nextUrl = this.getNextPageUrl(nextResponse.headers.link);
           }
@@ -477,7 +488,8 @@ export class CanvasClient {
   async getCourseGrades(courseId: number): Promise<CanvasEnrollment[]> {
     const response = await this.client.get(`/courses/${courseId}/enrollments`, {
       params: {
-        include: ['grades', 'observed_users']
+        user_id: 'self',
+        include: ['grades', 'current_points']
       }
     });
     return response.data;
