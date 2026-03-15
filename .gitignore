@@ -51,3 +51,6 @@ tmp/
 
 # Testing
 .vitest/
+
+# mcporter config (contains secrets)
+config/mcporter.json
