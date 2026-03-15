@@ -33,7 +33,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/DMontgomery40/mcp-canvas-lms.git"
+    "url": "git+https://github.com/KrishPatel1404/mcp-canvas-lms.git"
   },
   "keywords": [
     "canvas",
@@ -48,12 +48,12 @@
     "assignments",
     "courses"
   ],
-  "author": "David Montgomery <dmontg@gmail.com>",
+  "author": "Krish Patel",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/DMontgomery40/mcp-canvas-lms/issues"
+    "url": "https://github.com/KrishPatel1404/mcp-canvas-lms/issues"
   },
-  "homepage": "https://github.com/DMontgomery40/mcp-canvas-lms#readme",
+  "homepage": "https://github.com/KrishPatel1404/mcp-canvas-lms#readme",
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=8.0.0"
