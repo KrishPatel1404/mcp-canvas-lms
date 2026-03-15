@@ -30,16 +30,22 @@
 
 ## Quick Start
 
-### Option 1: Claude Desktop Integration (Recommended MCP Setup)
+### Option 1: Clone and run locally (recommended)
 
-Add to `claude_desktop_config.json`:
+```bash
+git clone https://github.com/KrishPatel1404/mcp-canvas-lms.git
+cd mcp-canvas-lms
+npm install && npm run build
+```
+
+Then add to your MCP client config (Claude Desktop, opencode, Cursor, etc.):
 
 ```json
 {
   "mcpServers": {
-    "canvas-mcp-server": {
-      "command": "npx",
-      "args": ["-y", "canvas-mcp-server"],
+    "canvas-lms": {
+      "command": "node",
+      "args": ["/path/to/mcp-canvas-lms/build/index.js"],
       "env": {
         "CANVAS_API_TOKEN": "your_token_here",
         "CANVAS_DOMAIN": "your_school.instructure.com"
@@ -49,33 +55,39 @@ Add to `claude_desktop_config.json`:
 }
 ```
 
-### Option 2: NPM Package
+### Option 2: opencode
 
-```bash
-# Install globally
-npm install -g canvas-mcp-server
+Add to `~/.config/opencode/opencode.json` (or a project-level `opencode.json`):
 
-# Configure
-export CANVAS_API_TOKEN="your_token_here"
-export CANVAS_DOMAIN="your_school.instructure.com"
-
-# Run
-canvas-mcp-server
+```json
+{
+  "mcp": {
+    "canvas-lms": {
+      "type": "local",
+      "command": ["node", "/path/to/mcp-canvas-lms/build/index.js"],
+      "environment": {
+        "CANVAS_API_TOKEN": "your_token_here",
+        "CANVAS_DOMAIN": "your_school.instructure.com"
+      }
+    }
+  }
+}
 ```
 
-### Option 3: Docker
+### Option 3: NPM (once published)
 
 ```bash
-docker run -d \
-  --name canvas-mcp \
-  -p 3000:3000 \
-  -e CANVAS_API_TOKEN="your_token" \
-  -e CANVAS_DOMAIN="school.instructure.com" \
-  -e MCP_TRANSPORT="streamable-http" \
-  -e MCP_HTTP_HOST="0.0.0.0" \
-  -e MCP_HTTP_PORT="3000" \
-  -e MCP_HTTP_PATH="/mcp" \
-  ghcr.io/dmontgomery40/mcp-canvas-lms:latest
+npm install -g @krishpkreame/canvas-mcp-server
+```
+
+```json
+{
+  "command": "canvas-mcp-server",
+  "env": {
+    "CANVAS_API_TOKEN": "your_token_here",
+    "CANVAS_DOMAIN": "your_school.instructure.com"
+  }
+}
 ```
 
 ## Transport Modes
@@ -138,13 +150,13 @@ MCP_HTTP_ALLOWED_ORIGINS=
 4. **Enter description**: "Claude MCP Integration"
 5. **Copy the generated token** Save securely!
 
-⚠️ **Account Admin Note**: For account-level operations, ensure your API token has administrative privileges.
+⚠️ A standard student token is all that's needed — no admin privileges required.
 
 ## Production Deployment
 
 ### Docker Compose
 ```bash
-git clone https://github.com/DMontgomery40/mcp-canvas-lms.git
+git clone https://github.com/KrishPatel1404/mcp-canvas-lms.git
 cd mcp-canvas-lms
 cp .env.example .env
 # Edit .env with your Canvas credentials
@@ -161,7 +173,7 @@ curl http://localhost:3000/health
 
 ```bash
 # Setup development environment
-git clone https://github.com/DMontgomery40/mcp-canvas-lms.git
+git clone https://github.com/KrishPatel1404/mcp-canvas-lms.git
 cd mcp-canvas-lms
 npm install
 
@@ -177,36 +189,71 @@ npm run lint
 npm run type-check
 ```
 
-## 📚 Available Tools (26 read-only tools)
+## 📚 Available Tools — 26 read-only tools
 
+All tools are **read-only**. Nothing in Canvas is ever modified.
+
+### System
 | Tool | Description |
 |------|-------------|
-| `canvas_health_check` | Check API connectivity |
-| `canvas_list_courses` | List all your courses |
-| `canvas_get_course` | Get detailed course info |
-| `canvas_list_assignments` | List course assignments |
-| `canvas_get_assignment` | Get assignment details |
-| `canvas_get_submission` | Check submission status |
-| `canvas_list_assignment_groups` | List assignment groups |
-| `canvas_list_modules` | List course modules |
-| `canvas_get_module` | Get module details |
-| `canvas_list_module_items` | List items in a module |
-| `canvas_get_module_item` | Get module item details |
-| `canvas_list_announcements` | List course announcements |
-| `canvas_get_course_grades` | Get course-specific grades |
+| `canvas_health_check` | Check API connectivity and confirm your token works |
+
+### Courses
+| Tool | Description |
+|------|-------------|
+| `canvas_list_courses` | List all enrolled courses |
+| `canvas_get_course` | Get detailed info for a specific course |
+| `canvas_get_syllabus` | Get the syllabus body for a course |
 | `canvas_get_dashboard_cards` | Get dashboard course cards |
-| `canvas_get_upcoming_assignments` | Get upcoming due dates |
-| `canvas_list_calendar_events` | List calendar events |
-| `canvas_list_files` | List course files |
-| `canvas_get_file` | Get file details |
-| `canvas_list_folders` | List course folders |
-| `canvas_list_pages` | List course pages |
-| `canvas_get_page` | Get page content |
-| `canvas_list_notifications` | List notifications |
-| `canvas_get_syllabus` | Get course syllabus |
-| `canvas_get_user_profile` | Get user profile |
-| `canvas_list_quizzes` | List course quizzes |
-| `canvas_get_quiz` | Get quiz details |
+
+### Assignments & Submissions
+| Tool | Description |
+|------|-------------|
+| `canvas_list_assignments` | List all assignments in a course |
+| `canvas_get_assignment` | Get details for a specific assignment |
+| `canvas_list_assignment_groups` | List assignment groups and weights |
+| `canvas_get_submission` | View your submission for an assignment |
+| `canvas_get_upcoming_assignments` | Get upcoming due dates across all courses |
+
+### Grades & Calendar
+| Tool | Description |
+|------|-------------|
+| `canvas_get_course_grades` | Get your current grade and scores for a course |
+| `canvas_list_calendar_events` | List calendar events within a date range |
+
+### Modules
+| Tool | Description |
+|------|-------------|
+| `canvas_list_modules` | List all modules in a course |
+| `canvas_get_module` | Get details for a specific module |
+| `canvas_list_module_items` | List all items inside a module |
+| `canvas_get_module_item` | Get details for a specific module item |
+
+### Announcements & Notifications
+| Tool | Description |
+|------|-------------|
+| `canvas_list_announcements` | List course announcements |
+| `canvas_list_notifications` | List your activity stream notifications |
+
+### Files & Pages
+| Tool | Description |
+|------|-------------|
+| `canvas_list_files` | List files in a course or folder |
+| `canvas_get_file` | Get details and download URL for a file |
+| `canvas_list_folders` | List folders in a course |
+| `canvas_list_pages` | List wiki pages in a course |
+| `canvas_get_page` | Get the content of a specific page |
+
+### Quizzes
+| Tool | Description |
+|------|-------------|
+| `canvas_list_quizzes` | List all quizzes in a course |
+| `canvas_get_quiz` | Get details for a specific quiz |
+
+### User
+| Tool | Description |
+|------|-------------|
+| `canvas_get_user_profile` | Get your Canvas profile information |
 
 ## 🌟 Example Claude Conversations
 
@@ -235,10 +282,10 @@ npm run type-check
 ## 🔍 Troubleshooting
 
 **Common Issues:**
-- ❌ **401 Unauthorized**: Check your API token and permissions
-- ❌ **404 Not Found**: Verify course/assignment IDs and access rights  
-- ❌ **"Page not found" on course creation**: Update to v2.2.0 for account_id fix
-- ❌ **Timeout**: Increase `CANVAS_TIMEOUT` or check network connectivity
+- ❌ **401 Unauthorized**: Check your API token is correct and not expired
+- ❌ **404 Not Found**: Verify course/assignment IDs and that you're enrolled in the course
+- ❌ **403 Forbidden**: Some endpoints (e.g. rubrics) require instructor access — expected for students
+- ❌ **Timeout**: Increase `CANVAS_TIMEOUT` in your `.env` or check network connectivity
 
 **Debug Mode:**
 ```bash
@@ -250,7 +297,7 @@ npm start
 
 ### Quick Contribution Setup
 ```bash
-git clone https://github.com/DMontgomery40/mcp-canvas-lms.git
+git clone https://github.com/KrishPatel1404/mcp-canvas-lms.git
 cd mcp-canvas-lms
 npm install
 npm run dev:watch
