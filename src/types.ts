@@ -217,22 +217,6 @@ export interface CanvasGrades {
   readonly override_grade?: string | null;
 }
 
-export interface CanvasDiscussionTopic {
-  id: number;
-  title: string;
-  message: string;
-  html_url: string;
-  posted_at: string;
-  assignment_id: number | null;
-  assignment?: CanvasAssignment;
-  discussion_type: string;
-  require_initial_post: boolean;
-  user_has_posted: boolean;
-  discussion_subentry_count: number;
-  read_state: 'read' | 'unread';
-  unread_count: number;
-}
-
 export interface CanvasModule {
   id: number;
   name: string;
@@ -411,46 +395,6 @@ export interface CanvasRubricSettings {
   hide_points?: boolean;
 }
 
-export interface CanvasConversation {
-  id: number;
-  subject: string;
-  workflow_state: 'read' | 'unread' | 'archived';
-  last_message: string;
-  last_message_at: string;
-  last_authored_message: string;
-  last_authored_message_at: string;
-  message_count: number;
-  subscribed: boolean;
-  private: boolean;
-  starred: boolean;
-  properties: string[];
-  audience: number[];
-  audience_contexts: {
-    [key: string]: string[];
-  };
-  avatar_url: string;
-  participants: CanvasConversationParticipant[];
-  messages?: CanvasConversationMessage[];
-}
-
-export interface CanvasConversationParticipant {
-  id: number;
-  name: string;
-  full_name: string;
-  avatar_url: string;
-}
-
-export interface CanvasConversationMessage {
-  id: number;
-  created_at: string;
-  body: string;
-  author_id: number;
-  generated: boolean;
-  media_comment?: any;
-  forwarded_messages?: CanvasConversationMessage[];
-  attachments?: CanvasFile[];
-}
-
 export interface CanvasNotification {
   id: number;
   title: string;
@@ -492,59 +436,6 @@ export interface CanvasFile {
 export interface CanvasSyllabus {
   course_id: number;
   syllabus_body: string;
-}
-
-export interface CanvasDashboard {
-  dashboard_cards: CanvasDashboardCard[];
-  planner_items: CanvasPlannerItem[];
-}
-
-export interface CanvasDashboardCard {
-  id: number;
-  shortName: string;
-  originalName: string;
-  courseCode: string;
-  assetString: string;
-  href: string;
-  term?: CanvasTerm;
-  subtitle: string;
-  enrollmentType: string;
-  observee?: string;
-  image?: string;
-  color: string;
-  position?: number;
-}
-
-export interface CanvasPlannerItem {
-  context_type: string;
-  context_name: string;
-  planner_date: string;
-  submissions: boolean;
-  plannable_id: number;
-  plannable_type: string;
-  plannable: {
-    id: number;
-    title: string;
-    due_at: string;
-    points_possible?: number;
-  };
-  html_url: string;
-  completed: boolean;
-}
-
-/**
- * Tool input types with strict validation
- */
-export interface SubmitAssignmentArgs {
-  course_id: number;
-  assignment_id: number;
-  submission_type: CanvasSubmissionType;
-  body?: string;
-  url?: string;
-  file_ids?: number[];
-  media_comment_id?: string;
-  media_comment_type?: 'audio' | 'video';
-  user_id?: number; // For teachers submitting on behalf of students
 }
 
 export interface FileUploadArgs {
