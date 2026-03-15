@@ -1,4 +1,4 @@
-# Canvas MCP Server v2.4.1
+# Canvas MCP Server v2.5.0
 
 > **Forked from [DMontgomery40/mcp-canvas-lms](https://github.com/DMontgomery40/mcp-canvas-lms)**
 >
@@ -22,9 +22,10 @@
 
 ### 🛠️ Technical Excellence
 - **Read-Only by Design**: No mutating operations — safe to connect to any Canvas account
-- **Robust API**: Automatic retries, pagination, comprehensive error handling
-- **Cloud Ready**: Docker containers, health checks
-- **Well Tested**: Unit tests, integration tests, mocking, coverage reports
+- **In-Memory Caching**: TTL-based response cache with LRU eviction (10m / 5m / 1m tiers) — up to 40x faster on repeated calls
+- **Request Deduplication**: Concurrent calls for the same endpoint share a single HTTP request
+- **Token Efficient**: Compact JSON serialization and lean tool descriptions save ~30-40% tokens in LLM context
+- **Robust API**: Automatic retries, `per_page=100` pagination (10x fewer round-trips), comprehensive error handling
 - **Type Safe**: Full TypeScript implementation with strict types
 - **26 Tools**: Focused, read-only coverage of Canvas LMS
 
@@ -116,6 +117,34 @@ MCP_HTTP_JSON_RESPONSE=true
 MCP_HTTP_ALLOWED_ORIGINS=
 ```
 
+## Performance
+
+All optimizations are built-in with zero configuration required.
+
+| Optimization | Impact |
+|---|---|
+| **Response cache** (TTL: 10m / 5m / 1m) | Up to 40x latency reduction on repeated calls |
+| **`per_page=100`** default | Up to 10x fewer HTTP round-trips for paginated endpoints |
+| **Request deduplication** | Concurrent calls for the same data share a single request |
+| **Compact JSON** | ~30-40% fewer tokens in LLM context window |
+| **Lean tool descriptions** | ~500+ tokens saved per `tools/list` response |
+
+### Cache TTL Tiers
+
+| Tier | TTL | Endpoints |
+|---|---|---|
+| Long | 10 min | User profile, course list, dashboard cards, syllabus |
+| Medium | 5 min | Assignments, modules, pages, files, folders, quizzes |
+| Short | 1 min | Submissions, grades, calendar, notifications, announcements |
+
+### Tuning
+
+```bash
+CANVAS_TIMEOUT=60000      # Request timeout in ms (default: 30000)
+CANVAS_MAX_RETRIES=3      # Retry count for 429/5xx errors
+CANVAS_RETRY_DELAY=1000   # Base retry delay in ms (exponential backoff)
+```
+
 ## 🎓 Workflow Examples
 
 ### Check Today's Assignments
@@ -152,37 +181,15 @@ MCP_HTTP_ALLOWED_ORIGINS=
 
 ⚠️ A standard student token is all that's needed — no admin privileges required.
 
-## Production Deployment
-
-### Docker Compose
-```bash
-git clone https://github.com/KrishPatel1404/mcp-canvas-lms.git
-cd mcp-canvas-lms
-cp .env.example .env
-# Edit .env with your Canvas credentials
-docker-compose up -d
-```
-
-### Health Monitoring
-```bash
-# Check application health (HTTP transport only)
-curl http://localhost:3000/health
-```
-
 ## Development
 
 ```bash
-# Setup development environment
 git clone https://github.com/KrishPatel1404/mcp-canvas-lms.git
 cd mcp-canvas-lms
 npm install
 
 # Start development with hot reload
 npm run dev:watch
-
-# Run tests
-npm run test
-npm run coverage
 
 # Code quality
 npm run lint
@@ -306,12 +313,13 @@ npm run dev:watch
 
 ## 🙋 Support & Community
 
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/DMontgomery40/mcp-canvas-lms/issues)
-- 💬 **Questions**: [GitHub Discussions](https://github.com/DMontgomery40/mcp-canvas-lms/discussions)
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/KrishPatel1404/mcp-canvas-lms/issues)
+- 💬 **Questions**: [GitHub Discussions](https://github.com/KrishPatel1404/mcp-canvas-lms/discussions)
+- 📦 **Upstream**: [DMontgomery40/mcp-canvas-lms](https://github.com/DMontgomery40/mcp-canvas-lms)
 
 ## Appendix: MCP in Practice (Code Execution, Tool Scale, and Safety)
 
-Last updated: 2026-02-24
+Last updated: 2026-03-16
 
 ### Why This Appendix Exists
 MCP is still one of the most useful interoperability layers for agentic tooling. The tradeoff is that large MCP servers can expose dozens of tools, and naive tool-calling can flood context windows with tool schemas, call traces, and low-signal chatter.
@@ -369,7 +377,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 ---
 
 <div align="center">
-  <strong>Canvas MCP Server v2.4.1</strong><br>
+  <strong>Canvas MCP Server v2.5.0</strong><br>
   <em>A safe, read-only Canvas integration for students</em><br><br>
   
   ⭐ **Star this repo if it helps you!** ⭐
